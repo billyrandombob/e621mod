@@ -101,8 +101,8 @@ class FileValidator
   end
 
   def validate_sar(video)
-    if video.sar.present? && video.sar != "1:1"
-      record.errors.add(:base, "video is anamorphic (SAR is #{video.sar})")
-    end
+    # if video.sar.present? && video.sar != "1:1"
+    #   record.errors.add(:base, "video is anamorphic (SAR is #{video.sar})")
+    # end
   end
 end
