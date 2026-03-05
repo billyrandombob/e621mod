@@ -6,10 +6,13 @@
 
 // Palette definitions
 $palette: (
-  "background-red": #76312e,
+  "background-red": #bb261f,
   "background-yellow": #827428,
   "background-green": #227d2a,
   "background-grey": #60686f,
+  "background-blue": #2196f3,
+  "background-purple": #9504ce,
+  "background-pink": #ff69b4,
 
   "background-gold": #ddc676,
   "background-orange": #ec8e49,
@@ -32,6 +35,11 @@ $palette: (
   "text-yellow": #ffd666,
   "text-green": #4caf50,
   "text-grey": #aaaaaa,
+  "text-purple": #9504ce,
+  "text-pink": #ff69b4,
+  "text-blue": #2196f3,
+  "text-black": #000000,
+  "text-orange": #ff9800,
 
   // Just here for the post borders, nothing else
   "plain-white": #fff,
