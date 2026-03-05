@@ -139,7 +139,7 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
 
   def build
     if @enable_safe_mode
-      must.push({ term: { rating: "s" } })
+      must.push({ term: { rating: "g" } })
     end
 
     add_array_range_relation(:post_id, :id)

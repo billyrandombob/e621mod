@@ -87,7 +87,7 @@ article.thumbnail .thm-desc {
   overflow: hidden; // Hide the box-shadow on .desc-a
 
   // Rating-dependent colors
-  @each $name, $color in ("e": "red", "q": "yellow", "s": "green") {
+  @each $name, $color in ("u": "purple", "m": "red", "g": "green") {
     &.thm-rating-#{$name} { background-color: palette("background-#{$color}"); }
   }
 

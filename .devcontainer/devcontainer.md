@@ -1,7 +1,7 @@
 ## Getting started
 Similar to the steps in the README, you will want to run `bin/setup`. 
 You may also want to run `bin/populate` to populate the database. 
-** IMPORTANT ** If you are using an online devcontainer instance (such as GitHub Codespaces), it is **HIGHLY RECOMMENDED** that to modify 'db/populate.rb' to use e926 or specify 'rating:s' in the post population. Other modifications may also be nesessary to comply with their content policies.
+** IMPORTANT ** If you are using an online devcontainer instance (such as GitHub Codespaces), it is **HIGHLY RECOMMENDED** that to modify 'db/populate.rb' to use e926 or specify 'rating:g' in the post population. Other modifications may also be nesessary to comply with their content policies.
 
 ## Common problems and solutions
 ### Container not opening

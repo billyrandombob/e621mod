@@ -57,9 +57,9 @@ class PostThumbnailComponent < ViewComponent::Base
     klass << "deleted" if post.is_deleted?
     klass << "has-parent" if post.parent_id
     klass << "has-children" if post.has_visible_children?
-    klass << "rating-safe" if post.rating == "s"
-    klass << "rating-questionable" if post.rating == "q"
-    klass << "rating-explicit" if post.rating == "e"
+    klass << "rating-general" if post.rating == "g"
+    klass << "rating-mature" if post.rating == "m"
+    klass << "rating-unrated" if post.rating == "u"
     klass << "blacklistable" unless options[:no_blacklist]
     klass << "no-stats" unless should_show_stats?
     klass

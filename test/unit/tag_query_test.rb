@@ -895,18 +895,18 @@ class TagQueryTest < ActiveSupport::TestCase
         assert_equal(arr[0..99], TagQuery.new("md5:#{arr.join(',')}")[:md5])
       end
 
-      # * Should be first character downcased if it's `s`, `q`, or `e`, otherwise unset
+      # * Should be first character downcased if it's `g`, `m`, or `u`, otherwise unset
       # * Should accept `-` & `~` prefixes
       should "parse rating tags correctly" do
-        assert_equal(["s"], TagQuery.new("rating:S")[:rating])
-        assert_equal(["s"], TagQuery.new("-rating:safe")[:rating_must_not])
-        assert_equal(["s"], TagQuery.new("~rating:Supercalifragilisticexpialidocious")[:rating_should])
-        assert_equal(["q"], TagQuery.new("-rating:q")[:rating_must_not])
-        assert_equal(["q"], TagQuery.new("~rating:Questionable")[:rating_should])
-        assert_equal(["q"], TagQuery.new("rating:quota")[:rating])
-        assert_equal(["e"], TagQuery.new("~rating:E")[:rating_should])
-        assert_equal(["e"], TagQuery.new("rating:explicit")[:rating])
-        assert_equal(["e"], TagQuery.new("-rating:Excruciating")[:rating_must_not])
+        assert_equal(["g"], TagQuery.new("rating:G")[:rating])
+        assert_equal(["g"], TagQuery.new("-rating:general")[:rating_must_not])
+        assert_equal(["g"], TagQuery.new("~rating:Supercalifragilisticexpialidocious")[:rating_should])
+        assert_equal(["m"], TagQuery.new("-rating:m")[:rating_must_not])
+        assert_equal(["m"], TagQuery.new("~rating:Mature")[:rating_should])
+        assert_equal(["m"], TagQuery.new("rating:quota")[:rating])
+        assert_equal(["u"], TagQuery.new("~rating:U")[:rating_should])
+        assert_equal(["u"], TagQuery.new("rating:unrated")[:rating])
+        assert_equal(["u"], TagQuery.new("-rating:Excruciating")[:rating_must_not])
         assert_nil(TagQuery.new("-rating:nonsense")[:rating_must_not])
         assert_nil(TagQuery.new("~rating:Poppycock")[:rating_should])
         assert_nil(TagQuery.new("rating:inconceivable")[:rating])

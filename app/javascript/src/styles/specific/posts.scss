@@ -197,15 +197,15 @@ div#c-posts {
       }
 
       #post_rating_e:checked + label {
-        background-color: themed("color-rating-explicit");
+        background-color: themed("color-rating-unrated");
       }
 
       #post_rating_q:checked + label {
-        background-color: themed("color-rating-questionable");
+        background-color: themed("color-rating-mature");
       }
 
       #post_rating_s:checked + label {
-        background-color: themed("color-rating-safe");
+        background-color: themed("color-rating-general");
       }
     }
 

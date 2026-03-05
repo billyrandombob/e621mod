@@ -54,7 +54,7 @@ class PostVersionTest < ActiveSupport::TestCase
     context "that has been created" do
       setup do
         @parent = create(:post)
-        @post = create(:post, tag_string: "aaa bbb ccc", rating: "e", parent: @parent, source: "xyz")
+        @post = create(:post, tag_string: "aaa bbb ccc", rating: "u", parent: @parent, source: "xyz")
       end
 
       should "also create a version" do
@@ -69,7 +69,7 @@ class PostVersionTest < ActiveSupport::TestCase
 
     context "that has been updated" do
       setup do
-        @post = create(:post, tag_string: "aaa bbb ccc", rating: "q", source: "xyz")
+        @post = create(:post, tag_string: "aaa bbb ccc", rating: "m", source: "xyz")
         @post.update(tag_string: "bbb ccc xxx", source: "")
       end
 
@@ -77,7 +77,7 @@ class PostVersionTest < ActiveSupport::TestCase
         assert_equal(2, @post.versions.size)
         @version = @post.versions.last
         assert_equal("bbb ccc xxx", @version.tags)
-        assert_equal("q", @version.rating)
+        assert_equal("m", @version.rating)
         assert_equal("", @version.source)
         assert_nil(@version.parent_id)
       end
@@ -92,8 +92,8 @@ class PostVersionTest < ActiveSupport::TestCase
 
       should "should create a version if the rating changes" do
         assert_difference("@post.versions.size", 1) do
-          @post.update(rating: "s")
-          assert_equal("s", @post.versions.last.rating)
+          @post.update(rating: "g")
+          assert_equal("g", @post.versions.last.rating)
         end
       end
 

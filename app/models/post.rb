@@ -21,7 +21,7 @@ class Post < ApplicationRecord
   before_validation :remove_parent_loops
   normalizes :description, with: ->(desc) { desc.gsub("\r\n", "\n") }
   validates :md5, uniqueness: { :on => :create, message: ->(obj, data) {"duplicate: #{Post.find_by_md5(obj.md5).id}"} }
-  validates :rating, inclusion: { in: %w(s q e), message: "rating must be s, q, or e" }
+  validates :rating, inclusion: { in: %w(g m u), message: "rating must be g, m, or u" }
   validates :bg_color, format: { with: /\A[A-Fa-f0-9]{6}\z/ }, allow_nil: true
   validates :description, length: { maximum: Danbooru.config.post_descr_max_size }, if: :description_changed?
   validate :added_tags_are_valid, if: :should_process_tags?
@@ -559,14 +559,14 @@ class Post < ApplicationRecord
 
     def pretty_rating
       case rating
-      when "q"
-        "Questionable"
+      when "m"
+        "Mature"
 
-      when "e"
-        "Explicit"
+      when "u"
+        "Unrated"
 
-      when "s"
-        "Safe"
+      when "g"
+        "General"
       end
     end
   end
@@ -2020,8 +2020,8 @@ class Post < ApplicationRecord
   has_bit_flags BOOLEAN_ATTRIBUTES
 
   def safeblocked?
-    return true if Danbooru.config.safe_mode? && rating != "s"
-    CurrentUser.safe_mode? && (rating != "s" || has_tag?(*Danbooru.config.safeblocked_tags))
+    return true if Danbooru.config.safe_mode? && rating != "g"
+    CurrentUser.safe_mode? && (rating != "g" || has_tag?(*Danbooru.config.safeblocked_tags))
   end
 
   def deleteblocked?

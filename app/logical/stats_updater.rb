@@ -27,9 +27,9 @@ class StatsUpdater
     stats[:average_posts_per_pool] = Pool.average(Arel.sql("cardinality(post_ids)")) || 0
     stats[:average_posts_per_set] = PostSet.average(Arel.sql("cardinality(post_ids)")) || 0
 
-    stats[:safe_posts] = Post.tag_match("rating:s", always_show_deleted: true).count_only
-    stats[:questionable_posts] = Post.tag_match("rating:q", always_show_deleted: true).count_only
-    stats[:explicit_posts] = Post.tag_match("rating:e", always_show_deleted: true).count_only
+    stats[:general_posts] = Post.tag_match("rating:g", always_show_deleted: true).count_only
+    stats[:mature_posts] = Post.tag_match("rating:m", always_show_deleted: true).count_only
+    stats[:unrated_posts] = Post.tag_match("rating:u", always_show_deleted: true).count_only
     stats[:jpg_posts] = Post.tag_match("type:jpg", always_show_deleted: true).count_only
     stats[:png_posts] = Post.tag_match("type:png", always_show_deleted: true).count_only
     stats[:webp_posts] = Post.tag_match("type:webp", always_show_deleted: true).count_only

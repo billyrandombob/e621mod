@@ -821,9 +821,9 @@ class PostTest < ActiveSupport::TestCase
         context "for a rating" do
           context "that is valid" do
             should "update the rating if the post is unlocked" do
-              @post.update(:tag_string => "aaa rating:e")
+              @post.update(:tag_string => "aaa rating:u")
               @post.reload
-              assert_equal("e", @post.rating)
+              assert_equal("u", @post.rating)
             end
           end
 
@@ -831,26 +831,26 @@ class PostTest < ActiveSupport::TestCase
             should "not update the rating" do
               @post.update(:tag_string => "aaa rating:z")
               @post.reload
-              assert_equal("q", @post.rating)
+              assert_equal("m", @post.rating)
             end
           end
 
           context "that is locked" do
             should "change the rating if locked in the same update" do
-              @post.update(tag_string: "rating:e", is_rating_locked: true)
+              @post.update(tag_string: "rating:", is_rating_locked: true)
 
               assert(@post.valid?)
-              assert_equal("e", @post.reload.rating)
+              assert_equal("u", @post.reload.rating)
             end
 
             should "not change the rating if locked previously" do
               @post.is_rating_locked = true
               @post.save
 
-              @post.update(:tag_string => "rating:e")
+              @post.update(:tag_string => "rating:u")
 
               assert(@post.invalid?)
-              assert_not_equal("e", @post.reload.rating)
+              assert_not_equal("u", @post.reload.rating)
             end
           end
         end
@@ -1220,34 +1220,34 @@ class PostTest < ActiveSupport::TestCase
         end
 
         should "merge any parent, source, and rating changes that were made after loading the initial set" do
-          post = create(:post, parent: nil, source: "", rating: "q")
+          post = create(:post, parent: nil, source: "", rating: "m")
           parent_post = create(:post)
 
           # user a changes rating to safe, adds parent
           post_edited_by_user_a = Post.find(post.id)
           post_edited_by_user_a.old_parent_id = ""
           post_edited_by_user_a.old_source = ""
-          post_edited_by_user_a.old_rating = "q"
+          post_edited_by_user_a.old_rating = "m"
           post_edited_by_user_a.parent_id = parent_post.id
           post_edited_by_user_a.source = nil
-          post_edited_by_user_a.rating = "s"
+          post_edited_by_user_a.rating = "g"
           post_edited_by_user_a.save
 
           # user b adds source
           post_edited_by_user_b = Post.find(post.id)
           post_edited_by_user_b.old_parent_id = ""
           post_edited_by_user_b.old_source = ""
-          post_edited_by_user_b.old_rating = "q"
+          post_edited_by_user_b.old_rating = "m"
           post_edited_by_user_b.parent_id = nil
           post_edited_by_user_b.source = "https://example.com"
-          post_edited_by_user_b.rating = "q"
+          post_edited_by_user_b.rating = "m"
           post_edited_by_user_b.save
 
           # final post should be rated safe and have the set parent and source
           final_post = Post.find(post.id)
           assert_equal(parent_post.id, final_post.parent_id)
           assert_equal("https://example.com", final_post.source)
-          assert_equal("s", final_post.rating)
+          assert_equal("g", final_post.rating)
         end
       end
 
@@ -1330,15 +1330,15 @@ class PostTest < ActiveSupport::TestCase
       setup { @post = create(:post) }
       subject { @post }
 
-      should "not allow values S, safe, derp" do
-        ["S", "safe", "derp"].each do |rating|
+      should "not allow values G, general, derp" do
+        ["G", "general", "derp"].each do |rating|
           subject.rating = rating
           assert(!subject.valid?)
         end
       end
 
-      should "allow values s, q, e" do
-        ["s", "q", "e"].each do |rating|
+      should "allow values g, m, u" do
+        ["g", "m", "u"].each do |rating|
           subject.rating = rating
           assert(subject.valid?)
         end
@@ -1349,15 +1349,15 @@ class PostTest < ActiveSupport::TestCase
       setup { @post = create(:post, is_rating_locked: true) }
       subject { @post }
 
-      should "not allow values S, safe, derp" do
-        ["S", "safe", "derp"].each do |rating|
+      should "not allow values G, general, derp" do
+        ["G", "general", "derp"].each do |rating|
           subject.rating = rating
           assert(!subject.valid?)
         end
       end
 
-      should "not allow values s, e" do
-        ["s", "e"].each do |rating|
+      should "not allow values g, u" do
+        ["g", "u"].each do |rating|
           subject.rating = rating
           assert(!subject.valid?)
         end
@@ -1847,18 +1847,18 @@ class PostTest < ActiveSupport::TestCase
     end
 
     should "return posts for a rating:<s|q|e> metatag" do
-      s = create(:post, rating: "s")
-      q = create(:post, rating: "q")
-      e = create(:post, rating: "e")
+      s = create(:post, rating: "g")
+      q = create(:post, rating: "m")
+      e = create(:post, rating: "u")
       all = [e, q, s]
 
-      assert_tag_match([s], "rating:s")
-      assert_tag_match([q], "rating:q")
-      assert_tag_match([e], "rating:e")
+      assert_tag_match([s], "rating:g")
+      assert_tag_match([q], "rating:m")
+      assert_tag_match([e], "rating:u")
 
-      assert_tag_match(all - [s], "-rating:s")
-      assert_tag_match(all - [q], "-rating:q")
-      assert_tag_match(all - [e], "-rating:e")
+      assert_tag_match(all - [s], "-rating:g")
+      assert_tag_match(all - [q], "-rating:m")
+      assert_tag_match(all - [e], "-rating:u")
     end
 
     should "return posts for a locked:<rating|note|status> metatag" do
@@ -1991,14 +1991,14 @@ class PostTest < ActiveSupport::TestCase
     end
 
     should "succeed for exclusive tag searches with no other tag" do
-      post1 = create(:post, rating: "s", tag_string: "aaa")
+      post1 = create(:post, rating: "g", tag_string: "aaa")
       assert_nothing_raised do
         relation = Post.tag_match("-aaa")
       end
     end
 
     should "succeed for exclusive tag searches combined with a metatag" do
-      post1 = create(:post, rating: "s", tag_string: "aaa")
+      post1 = create(:post, rating: "g", tag_string: "aaa")
       assert_nothing_raised do
         relation = Post.tag_match("-aaa id:>0")
       end
@@ -2229,7 +2229,7 @@ class PostTest < ActiveSupport::TestCase
   #       context "in safe mode" do
   #         setup do
   #           CurrentUser.stubs(:safe_mode?).returns(true)
-  #           create(:post, rating: "s")
+  #           create(:post, rating: "g")
   #         end
   #
   #         should "work for a blank search" do
@@ -2241,22 +2241,22 @@ class PostTest < ActiveSupport::TestCase
   #         end
   #
   #         should "not fail for a two tag search by a member" do
-  #           post1 = create(:post, tag_string: "aaa bbb rating:s")
-  #           post2 = create(:post, tag_string: "aaa bbb rating:e")
+  #           post1 = create(:post, tag_string: "aaa bbb rating:g")
+  #           post2 = create(:post, tag_string: "aaa bbb rating:u")
   #
-  #           Danbooru.config.expects(:is_unlimited_tag?).with("rating:s").once.returns(true)
+  #           Danbooru.config.expects(:is_unlimited_tag?).with("rating:g").once.returns(true)
   #           Danbooru.config.expects(:is_unlimited_tag?).with(anything).twice.returns(false)
   #           assert_equal(1, Post.fast_count("aaa bbb"))
   #         end
   #
   #         should "set the value in cache" do
-  #           Post.expects(:set_count_in_cache).with("rating:s", kind_of(Integer)).once
+  #           Post.expects(:set_count_in_cache).with("rating:g", kind_of(Integer)).once
   #           Post.fast_count("")
   #         end
   #
   #         context "with a primed cache" do
   #           setup do
-  #             Cache.write(Post.count_cache_key('rating:s'), "100")
+  #             Cache.write(Post.count_cache_key('rating:g'), "100")
   #           end
   #
   #           should "fetch the value from the cache" do
@@ -2271,8 +2271,8 @@ class PostTest < ActiveSupport::TestCase
   context "Reverting: " do
     context "a post that is rating locked" do
       setup do
-        @post = create(:post, rating: "s")
-        @post.update(rating: "q", is_rating_locked: true)
+        @post = create(:post, rating: "g")
+        @post.update(rating: "m", is_rating_locked: true)
       end
 
       should "not revert the rating" do
@@ -2285,7 +2285,7 @@ class PostTest < ActiveSupport::TestCase
       end
 
       should "revert the rating after unlocking" do
-        @post.update(rating: "e", is_rating_locked: false)
+        @post.update(rating: "u", is_rating_locked: false)
         assert_nothing_raised do
           @post.revert_to!(@post.versions.first)
         end
@@ -2297,7 +2297,7 @@ class PostTest < ActiveSupport::TestCase
 
     context "a post that has been updated" do
       setup do
-        @post = create(:post, rating: "q", tag_string: "aaa", source: "")
+        @post = create(:post, rating: "m", tag_string: "aaa", source: "")
         @post.reload
         @post.update(:tag_string => "aaa bbb ccc ddd")
         @post.reload
@@ -2317,7 +2317,7 @@ class PostTest < ActiveSupport::TestCase
         should "correctly revert all fields" do
           assert_equal("aaa bbb ccc ddd", @post.tag_string)
           assert_equal("", @post.source)
-          assert_equal("q", @post.rating)
+          assert_equal("m", @post.rating)
           assert_equal("Revert to version #{@version.version}", @post.versions.last.reason)
         end
       end
@@ -2330,7 +2330,7 @@ class PostTest < ActiveSupport::TestCase
         should "correctly revert all fields" do
           assert_equal("bbb xxx yyy", @post.tag_string)
           assert_equal("xyz", @post.source)
-          assert_equal("q", @post.rating)
+          assert_equal("m", @post.rating)
         end
       end
     end
