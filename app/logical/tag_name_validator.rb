@@ -49,8 +49,9 @@ class TagNameValidator < ActiveModel::EachValidator
       end
     end
 
-    if !options[:disable_ascii_check] && normalized =~ /[^[:ascii:]]/
-      record.errors.add(attribute, "'#{value}' must consist of only ASCII characters")
-    end
+    # ascii check
+    # if !options[:disable_ascii_check] && normalized =~ /[^[:ascii:]]/
+    #   record.errors.add(attribute, "'#{value}' must consist of only ASCII characters")
+    # end
   end
 end
