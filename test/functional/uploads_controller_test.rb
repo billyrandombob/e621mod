@@ -19,7 +19,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
           get_auth new_upload_path, @user, params: { url: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg" }
           file = fixture_file_upload("test.jpg")
           assert_difference(-> { Post.count }) do
-            post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "q", source: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg" } }
+            post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "m", source: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg" } }
           end
           post = Post.last
           assert_equal("ecef68c44edb8a0d6a3070b5f8e8ee76", post.md5)
@@ -108,7 +108,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
       should "create a new upload" do
         assert_difference("Upload.count", 1) do
           file = fixture_file_upload("test.jpg")
-          post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "q", source: "aaa" } }
+          post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "m", source: "aaa" } }
         end
       end
 
@@ -123,7 +123,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
         should "fail and create ticket" do
           assert_difference({ "Post.count" => 0, "Ticket.count" => 1 }) do
             file = fixture_file_upload("test.jpg")
-            post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "q", source: "aaa" } }
+            post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "m", source: "aaa" } }
           end
         end
 
@@ -131,7 +131,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
           DestroyedPost.find_by!(post_id: @post.id).update_column(:notify, false)
           assert_difference(%(Post.count Ticket.count), 0) do
             file = fixture_file_upload("test.jpg")
-            post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "q", source: "aaa" } }
+            post_auth uploads_path, @user, params: { upload: { file: file, tag_string: "aaa", rating: "m", source: "aaa" } }
           end
         end
       end

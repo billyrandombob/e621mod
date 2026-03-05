@@ -11,9 +11,9 @@
       <% if CurrentUser.is_privileged? %>
         <option value="vote-up">Vote up</option>
         <option value="vote-down">Vote down</option>
-        <option value="rating-s">Rate Safe</option>
-        <option value="rating-q">Rate Questionable</option>
-        <option value="rating-e">Rate Explicit</option>
+        <option value="rating-g">Rate General</option>
+        <option value="rating-m">Rate Mature</option>
+        <option value="rating-u">Rate Unrated</option>
         <option value="tag-script">Tag script</option>
       <% end %>
       <% if CurrentUser.is_janitor? %>

@@ -14,7 +14,7 @@ FactoryBot.define do
     image_width { 1500 }
     image_height { 1000 }
     file_size { 2000 }
-    rating { "q" }
+    rating { "m" }
     duration { 0.0 }
     sequence(:source) { |n| "https://example.com/#{n}" }
   end

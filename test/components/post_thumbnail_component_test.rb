@@ -9,7 +9,7 @@ class PostThumbnailComponentTest < ActionView::TestCase
     @user = create(:user)
     as(@user) do
       @post = create(:post,
-                     rating: "s",
+                     rating: "g",
                      score: 5,
                      fav_count: 3,
                      tag_string: "tag1 tag2",
@@ -31,7 +31,7 @@ class PostThumbnailComponentTest < ActionView::TestCase
       render component
 
       assert_select "article.thumbnail[data-id='#{@post.id}']"
-      assert_select "article.thumbnail.rating-safe"
+      assert_select "article.thumbnail.rating-general"
       assert_select "img[alt='post ##{@post.id}']"
       assert_select ".thm-desc .thm-score"
       assert_select ".thm-desc .thm-favorites"
@@ -159,18 +159,18 @@ class PostThumbnailComponentTest < ActionView::TestCase
 
   test "includes correct CSS classes for different ratings" do
     as(@user) do
-      safe_post = create(:post, rating: "s")
-      questionable_post = create(:post, rating: "q")
-      explicit_post = create(:post, rating: "e")
+      general_post = create(:post, rating: "g")
+      mature_post = create(:post, rating: "m")
+      unrated_post = create(:post, rating: "u")
 
-      render PostThumbnailComponent.new(post: safe_post)
-      assert_select "article.thumbnail.rating-safe"
+      render PostThumbnailComponent.new(post: general_post)
+      assert_select "article.thumbnail.rating-general"
 
-      render PostThumbnailComponent.new(post: questionable_post)
-      assert_select "article.thumbnail.rating-questionable"
+      render PostThumbnailComponent.new(post: mature_post)
+      assert_select "article.thumbnail.rating-mature"
 
-      render PostThumbnailComponent.new(post: explicit_post)
-      assert_select "article.thumbnail.rating-explicit"
+      render PostThumbnailComponent.new(post: unrated_post)
+      assert_select "article.thumbnail.rating-unrated"
     end
   end
 
@@ -474,12 +474,12 @@ class PostThumbnailComponentTest < ActionView::TestCase
 
   test "includes basic post info in tooltip" do
     as(@user) do
-      post = create(:post, rating: "s", score: 10)
+      post = create(:post, rating: "g", score: 10)
       component = PostThumbnailComponent.new(post: post)
 
       render component
 
-      assert_select "a[data-hover-text*='Rating: s']"
+      assert_select "a[data-hover-text*='Rating: g']"
       assert_select "a[data-hover-text*='Score: 10']"
       assert_select "a[data-hover-text*='ID: #{post.id}']"
     end

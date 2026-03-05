@@ -10,11 +10,11 @@ class UserRevertTest < ActiveSupport::TestCase
 
       as(@creator) do
         @parent = create(:post)
-        @post = create(:post, tag_string: "aaa bbb ccc", rating: "q", source: "xyz")
+        @post = create(:post, tag_string: "aaa bbb ccc", rating: "m", source: "xyz")
       end
 
       as(@user) do
-        @post.update(tag_string: "bbb ccc xxx", source: "", rating: "e")
+        @post.update(tag_string: "bbb ccc xxx", source: "", rating: "u")
       end
     end
 
@@ -23,7 +23,7 @@ class UserRevertTest < ActiveSupport::TestCase
     should "have the correct data" do
       assert_equal("bbb ccc xxx", @post.tag_string)
       assert_equal("", @post.source)
-      assert_equal("e", @post.rating)
+      assert_equal("u", @post.rating)
     end
 
     context "when processed" do
@@ -35,7 +35,7 @@ class UserRevertTest < ActiveSupport::TestCase
 
         assert_equal("aaa bbb ccc", @post.tag_string)
         assert_equal("xyz", @post.source)
-        assert_equal("q", @post.rating)
+        assert_equal("m", @post.rating)
       end
 
       context "when the user has an upload" do

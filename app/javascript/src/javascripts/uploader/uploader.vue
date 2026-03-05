@@ -118,14 +118,14 @@
                     </div>
                     <div>
                         <template v-if="!safe">
-                            <button class="toggle-button rating-e" :class="{active: rating==='e'}" @click="rating = 'e'">
-                                Explicit
+                            <button class="toggle-button rating-u" :class="{active: rating==='u'}" @click="rating = 'u'">
+                                Unrated
                             </button>
-                            <button class="toggle-button rating-q" :class="{active: rating==='q'}" @click="rating = 'q'">
-                                Questionable
+                            <button class="toggle-button rating-m" :class="{active: rating==='m'}" @click="rating = 'm'">
+                                Mature
                             </button>
                         </template>
-                        <button class="toggle-button rating-s" :class="{active: rating==='s'}" @click="rating = 's'">Safe
+                        <button class="toggle-button rating-g" :class="{active: rating==='g'}" @click="rating = 'g'">General
                         </button>
                     </div>
                 </div>

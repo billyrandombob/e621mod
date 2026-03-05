@@ -1351,7 +1351,7 @@ class TagQuery
 
       when "md5" then q[:md5] = g2.downcase.split(",")[0..99]
 
-      when "rating", "-rating", "~rating" then add_to_query(type, :rating, g2) if %w[s q e].include?(g2 = g2[0]&.downcase)
+      when "rating", "-rating", "~rating" then add_to_query(type, :rating, g2) if %w[g m u].include?(g2 = g2[0]&.downcase)
 
       when "locked", "-locked", "~locked"
         add_to_query(type, :locked, g2) if (g2 = case g2.downcase

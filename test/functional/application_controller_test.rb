@@ -134,13 +134,13 @@ class ApplicationControllerTest < ActionDispatch::IntegrationTest
     context "when the api limit is exceeded" do
       should "fail with a 429 error" do
         user = create(:user)
-        post = create(:post, rating: "s", uploader: user)
+        post = create(:post, rating: "g", uploader: user)
         UserThrottle.any_instance.stubs(:throttled?).returns(true)
 
-        put_auth post_path(post), user, params: { post: { rating: "e" } }
+        put_auth post_path(post), user, params: { post: { rating: "u" } }
 
         assert_response 429
-        assert_equal("s", post.reload.rating)
+        assert_equal("g", post.reload.rating)
       end
     end
 

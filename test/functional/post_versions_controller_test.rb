@@ -16,7 +16,7 @@ class PostVersionsControllerTest < ActionDispatch::IntegrationTest
             @post.update(tag_string: "1 2", source: "xxx\nyyy", locked_tags: "4 5")
           end
           travel_to(4.hours.from_now) do
-            @post.update(tag_string: "2 3", rating: "e", source: "yyy\nzzz", locked_tags: "5 6")
+            @post.update(tag_string: "2 3", rating: "u", source: "yyy\nzzz", locked_tags: "5 6")
           end
           @versions = @post.versions
           @post2 = create(:post)

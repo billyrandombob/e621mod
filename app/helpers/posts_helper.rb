@@ -147,9 +147,9 @@ module PostsHelper
 
   def rating_collection
     [
-      ["Safe", "s"],
-      ["Questionable", "q"],
-      ["Explicit", "e"]
+      ["General", "g"],
+      ["Mature", "m"],
+      ["Unrated", "u"]
     ]
   end
 

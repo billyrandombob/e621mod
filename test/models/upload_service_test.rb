@@ -66,7 +66,7 @@ class UploadServiceTest < ActiveSupport::TestCase
     setup do
       @source = "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg"
       CurrentUser.user = create(:user, created_at: 1.month.ago)
-      @build_service = ->(**params) { subject.new({ rating: "s", uploader: CurrentUser.user, uploader_ip_addr: CurrentUser.ip_addr }.merge(params)) }
+      @build_service = ->(**params) { subject.new({ rating: "g", uploader: CurrentUser.user, uploader_ip_addr: CurrentUser.ip_addr }.merge(params)) }
     end
 
     context "automatic tagging" do
@@ -134,11 +134,11 @@ class UploadServiceTest < ActiveSupport::TestCase
     end
 
     should "assign the rating from tags" do
-      service = @build_service.call(source: @source, rating: "s", tag_string: "blah")
+      service = @build_service.call(source: @source, rating: "g", tag_string: "blah")
       post = service.start!
 
       assert_equal(true, post.valid?)
-      assert_equal("s", post.rating)
+      assert_equal("g", post.rating)
       assert_equal("blah", post.tag_string)
     end
 
@@ -146,7 +146,7 @@ class UploadServiceTest < ActiveSupport::TestCase
       should "normalize unicode characters in the source field" do
         source1 = "poke\u0301mon" # pokémon (nfd form)
         source2 = "pok\u00e9mon"  # pokémon (nfc form)
-        service = @build_service.call(source: source1, rating: "s", file: fixture_file_upload("test.jpg"))
+        service = @build_service.call(source: source1, rating: "g", file: fixture_file_upload("test.jpg"))
 
         assert_nothing_raised { @upload = service.start! }
         assert_equal(source2, @upload.post.source)
@@ -155,7 +155,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
     context "without a file or a source url" do
       should "fail gracefully" do
-        service = @build_service.call(source: "blah", rating: "s")
+        service = @build_service.call(source: "blah", rating: "g")
 
         assert_nothing_raised { @upload = service.start! }
         assert_equal(true, @upload.is_errored?)
@@ -165,7 +165,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
     context "with both a file and a source url" do
       should "upload the file and set the source field to the given source" do
-        service = @build_service.call(file: fixture_file_upload("test.jpg"), source: "http://www.example.com", rating: "s")
+        service = @build_service.call(file: fixture_file_upload("test.jpg"), source: "http://www.example.com", rating: "g")
 
         assert_nothing_raised { @upload = service.start! }
         assert_equal(true, @upload.is_completed?)
