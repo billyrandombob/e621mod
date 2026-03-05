@@ -178,10 +178,12 @@ class Upload < ApplicationRecord
       return
     end
 
-    if (destroyed_post = DestroyedPost.find_by(md5: md5))
-      errors.add(:base, "That image had been deleted from our site, and cannot be re-uploaded")
-      destroyed_post.notify_reupload(uploader)
-      return
+    if !Danbooru.config.allow_reuploads?
+      if (destroyed_post = DestroyedPost.find_by(md5: md5))
+        errors.add(:base, "That image had been deleted from our site, and cannot be re-uploaded")
+        destroyed_post.notify_reupload(uploader)
+        return
+      end
     end
 
     replacements = PostReplacement.pending.where(md5: md5)

@@ -788,6 +788,10 @@ module Danbooru
     def aibur_stats_discord_webhook_url
       nil
     end
+
+    def allow_reuploads?
+      false
+    end
   end
 
   class EnvironmentConfiguration
