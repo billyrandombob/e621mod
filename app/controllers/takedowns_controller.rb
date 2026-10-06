@@ -3,6 +3,7 @@
 class TakedownsController < ApplicationController
   respond_to :html, :json
   before_action :can_handle_takedowns_only, only: %i[update edit destroy add_by_ids add_by_tags count_matching_posts remove_by_ids]
+  before_action :ensure_takedowns_enabled, only: %i[new create]
 
   def index
     @takedowns = Takedown.search(search_params).paginate(params[:page], limit: params[:limit])
@@ -96,7 +97,7 @@ class TakedownsController < ApplicationController
 
   def search_params
     permitted_params = %i[status]
-    permitted_params += %i[source reason creator_id creator_name creator_logged_in reason_hidden instructions post_id notes] if CurrentUser.is_moderator?
+    permitted_params += %i[source reason creator_id creator_name creator_logged_in reason_hidden instructions post_id notes] if CurrentUser.is_moderator? || CurrentUser.is_approver?
     permitted_params += %i[ip_addr email vericode order] if CurrentUser.is_admin?
     permit_search_params permitted_params
   end
@@ -107,5 +108,9 @@ class TakedownsController < ApplicationController
       permitted_params << %i[notes del_post_ids status]
     end
     params.require(:takedown).permit(*permitted_params, post_ids: [])
+  end
+
+  def ensure_takedowns_enabled
+    access_denied if Security::Lockdown.takedowns_disabled?
   end
 end

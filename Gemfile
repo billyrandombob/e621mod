@@ -4,7 +4,7 @@ source "https://rubygems.org/"
 
 gem "dotenv", require: "dotenv/load"
 
-gem "rails", "~> 8.0.0"
+gem "rails", "~> 8.1.0"
 gem "pg"
 gem "dalli", platforms: :ruby
 gem "simple_form"
@@ -19,22 +19,25 @@ gem "responders"
 if ENV["LOCAL_DTEXT"] == "true" && File.directory?("vendor/dtext")
   gem "dtext", path: "vendor/dtext", require: "dtext"
 else
-  gem "dtext", git: "https://github.com/e621ng/dtext.git", tag: "2.0.2", require: "dtext"
+  gem "dtext", "2.0.6", require: "dtext"
 end
 
 gem "bootsnap"
 gem "addressable"
 gem "recaptcha", require: "recaptcha/rails"
 gem "vite_rails"
-gem "sidekiq", "~> 7.0"
+gem "sidekiq", "~> 8.1"
 gem "marcel"
 # bookmarks for later, if they are needed
 # gem 'sidekiq-worker-killer'
 gem "sidekiq-unique-jobs"
+gem "sidekiq-cron"
 gem "redis"
 gem "request_store"
 gem "zxcvbn-ruby", require: "zxcvbn"
 gem "view_component"
+gem "rotp", "~> 6.3"
+gem "rqrcode", "~> 3.0"
 
 gem "diffy"
 gem "rugged"
@@ -51,7 +54,12 @@ gem "faraday"
 gem "faraday-follow_redirects"
 gem "faraday-retry"
 
+gem "rack-cors"
 gem "rails-settings-cached", "~> 2.9"
+gem "sitemap_generator"
+
+gem "doorkeeper", "~> 5.8"
+gem "doorkeeper-openid_connect", "~> 1.10"
 
 group :production do
   gem "pitchfork"
@@ -60,6 +68,18 @@ end
 group :development, :test do
   gem "listen"
   gem "puma"
+
+  # Testing suite
+  gem "rspec-rails", "~> 8.0.0", require: false
+  gem "rspec-sidekiq", "~> 5.3", require: false
+  gem "parallel_tests", ">= 4.0"
+  gem "factory_bot_rails", require: false
+  gem "simplecov", require: false
+  gem "simplecov_json_formatter", require: false
+  gem "webmock", require: false
+
+  # Both tests and populate.rb
+  gem "faker", require: false
 end
 
 group :development do
@@ -67,16 +87,11 @@ group :development do
   gem "rubocop", require: false
   gem "rubocop-erb", require: false
   gem "rubocop-rails", require: false
+  gem "rubocop-rspec", require: false
+  gem "rubocop-rspec_rails", require: false
   gem "rexml", ">= 3.4.2"
   gem "ruby-lsp"
   gem "ruby-lsp-rails", "~> 0.4.8"
-  gem "faker", require: false
-end
-
-group :test do
-  gem "shoulda-context", require: false
-  gem "shoulda-matchers", require: false
-  gem "factory_bot_rails", require: false
-  gem "mocha", require: false
-  gem "webmock", require: false
+  gem "ruby-lsp-rspec", require: false
+  gem "rack-mini-profiler"
 end

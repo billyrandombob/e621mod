@@ -7,6 +7,7 @@ services:
   dev-container:
     build:
       dockerfile: Dockerfile
+      target: development
     image: e621
     user: ${DOCKER_USER:-root}
     environment:
@@ -20,3 +21,6 @@ services:
       - ./:/app:delegated
       - node_modules:/app/node_modules
       - post_data:/app/public/data
+  nginx:
+    environment:
+      RECOMMENDER_URL: http://172.17.0.1:8000

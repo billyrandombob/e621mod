@@ -7,13 +7,13 @@
       <h4>Responses</h4>
       <% unless @children.nil? %>
         <% @children.each do |c| %>
-          <% next unless c.visible_to?(CurrentUser.user) %>
+          <% next unless c.can_access? %>
           <%= render partial: "blips/partials/show/blip", locals: {blip: c} %>
         <% end %>
       <% end %>
     </div>
 
-    <% if CurrentUser.is_anonymous? %>
+    <% if CurrentUser.user.is_logged_out? %>
         <h5 id="respond-link"><%= link_to "Login to respond »", new_session_path %></h5>
     <% else %>
         <%= render "form", blip: @blip.responses.new %>
@@ -31,4 +31,4 @@
   Blip #<%= @blip.id %>
 <% end %>
 
-<% render(partial: "static/embed", locals: { record: @blip, name: "Blip by #{@blip.creator.pretty_name}", description: strip_tags(format_text(@blip.body)).truncate(200) }) %>
+<% render(partial: "static/embed", locals: { record: @blip, name: "Blip by #{@blip.creator.pretty_name}", description: format_plaintext(@blip.body) }) %>

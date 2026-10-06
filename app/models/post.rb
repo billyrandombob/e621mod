@@ -8,6 +8,25 @@ class Post < ApplicationRecord
   # Tags to copy when copying notes.
   NOTE_COPY_TAGS = %w[translated partially_translated translation_check translation_request].freeze
   NON_ARTIST_TAGS = %w[avoid_posting conditional_dnp epilepsy_warning sound_warning].freeze
+  NON_KNOWN_ARTIST_TAGS = %w[unknown_artist anonymous_artist third-party_edit].freeze
+
+  # Seconds of age worth one log10 unit of score in the `order:hot` ranking (~5 days).
+  # Smaller favours fresher posts; larger lets posts stay hot longer.
+  HOTNESS_TIME_DIVISOR = 432_000.0
+
+  # Columns the posts_trigger_change_seq() DB trigger does not bump change_seq for.
+  # Every posts column must appear either in the trigger (db/migrate/*_update_posts_trigger_change_seq.rb) or here
+  # ChangeSeqSpec fails otherwise, so a newly added column can't silently go uncategorized.
+  CHANGE_SEQ_IGNORED = [
+    :id, :created_at, :updated_at, :change_seq, :uploader_ip_addr, :has_children, # not relevant
+    :up_score, :down_score, :score, :hotness, :fav_count, :comment_count, :tag_count, *TagCategory::CATEGORIES.map { |n| :"tag_count_#{n}" }, # transient counters
+    :file_ext, :file_size, :image_width, :image_height, :duration, # handled by md5
+    :last_comment_bumped_at, :last_commented_at, :is_comment_disabled, :is_comment_locked, # comments
+  ].freeze
+
+  # Replaced by pool_ids for pools; sets keep no post-side state (queried via
+  # post_sets.post_ids). Dropped in a follow-up migration after the rollback window.
+  self.ignored_columns += %w[pool_string]
 
   before_validation :initialize_uploader, :on => :create
   before_validation :merge_old_changes
@@ -32,12 +51,14 @@ class Post < ApplicationRecord
   validate :updater_can_change_rating
   before_save :update_tag_post_counts, if: :should_process_tags?
   before_save :set_tag_counts, if: :should_process_tags?
-  after_create :check_for_ai_content, if: -> { Danbooru.config.auto_flag_ai_posts? }
+  after_create :check_for_ai_content, if: -> { Setting.automatic_ai_check? }
+  after_create :update_hotness!
   after_save :create_post_events
   after_save :create_version
   after_save :update_parent_on_save
   after_save :apply_post_metatags
   after_commit :delete_files, on: :destroy
+  after_commit :delete_avatar_crops, on: :destroy
   after_commit :remove_iqdb_async, on: :destroy
   # after_commit :update_iqdb_async, :on => :create
   after_commit :handle_thumbnails_on_create, on: :create
@@ -60,7 +81,7 @@ class Post < ApplicationRecord
   has_many :favorites
   has_many :replacements, class_name: "PostReplacement", :dependent => :destroy
 
-  attr_accessor :old_tag_string, :old_parent_id, :old_source, :old_rating,
+  attr_accessor :old_tag_string, :old_parent_id, :old_source, :old_rating, :old_description,
                 :do_not_version_changes, :tag_string_diff, :source_diff, :edit_reason
 
   has_many :versions, -> {order("post_versions.id ASC")}, :class_name => "PostVersion", :dependent => :destroy
@@ -82,6 +103,13 @@ class Post < ApplicationRecord
 
     def delete_files
       Post.delete_files(id, md5, file_ext, force: true)
+    end
+
+    def delete_avatar_crops
+      User.where(avatar_id: id).pluck(:id).each do |user_id|
+        AvatarCleanupJob.perform_async(user_id, true)
+        UserAvatarUrlCache.invalidate(user_id)
+      end
     end
 
     def move_files_on_delete
@@ -108,6 +136,10 @@ class Post < ApplicationRecord
       storage_manager.post_file_url(self)
     end
 
+    def download_url
+      storage_manager.post_download_url(self)
+    end
+
     # TODO: Deprecate this method
     def file_url_ext(ext)
       storage_manager.post_file_url(self, ext: ext)
@@ -125,6 +157,11 @@ class Post < ApplicationRecord
     def sample_url(type = :sample_jpg)
       return file_url unless has_sample?
       storage_manager.post_file_url(self, type)
+    end
+
+    def sample_url_pair
+      return [file_url, file_url] unless has_sample?
+      [sample_url(:sample_webp), sample_url(:sample_jpg)]
     end
 
     def preview_file_url(type = :preview_jpg)
@@ -176,61 +213,6 @@ class Post < ApplicationRecord
       end
     end
 
-    def file_url_for(user)
-      if user.default_image_size == "large" && image_width > Danbooru.config.large_image_width
-        sample_url
-      else
-        file_url
-      end
-    end
-
-    # Initial video URLs for the post
-    # Should only be relevant if the user has javascript disabled
-    # Otherwise, the sources provided here will be overwritten
-    def initial_video_urls(user = CurrentUser.user)
-      return [] unless is_video? || !visible?
-
-      if video_sample_list.blank?
-        # likely to happen while new samples are being generated
-        [{
-          codec: "video/#{file_ext}",
-          url: file_url,
-        }]
-      elsif user.default_image_size == "large" && video_sample_list[:samples].any?
-        # sample videos
-        sample = video_sample_list[:samples].values.last
-        [{
-          codec: "video/mp4#{sample.key?(:codec) ? "; codec=#{sample[:codec]}" : ''}",
-          url: sample[:url],
-        }]
-      else
-        # original / fit videos
-        output = []
-        video_sample_list[:variants].each do |ext, data|
-          output.push({
-            codec: "video/#{ext}" + (data.key?(:codec) ? "; codec=#{data[:codec]}" : ""),
-            url: data[:url],
-          })
-        end
-
-        original = video_sample_list[:original]
-        output.push({
-          codec: "video/#{file_ext}" + (original.key?(:codec) ? "; codec=#{original[:codec]}" : ""),
-          url: original[:url],
-        })
-
-        output
-      end
-    end
-
-    def display_class_for(user = CurrentUser.user)
-      if user.default_image_size == "original"
-        ""
-      else
-        "fit-window"
-      end
-    end
-
     def has_sample_size?(scale)
       return false if video_sample_list.blank?
       return false if video_sample_list[:samples].blank?
@@ -256,7 +238,7 @@ class Post < ApplicationRecord
           sample_data[:original] = video_samples["original"]
 
           sample_data[:variants] = {}
-          sample_data[:has] = true if video_samples["variants"].present?
+          sample_data[:has] = true if video_samples["original"]["codec"].present?
           video_samples["variants"].each do |name, video|
             sample_data[:variants][name] = video
             sample_data[:variants][name][:codec] = name == "mp4" ? "avc1.4D401E" : "vp9"
@@ -294,9 +276,9 @@ class Post < ApplicationRecord
 
     def generate_video_samples(later: false)
       if later
-        PostVideoConversionJob.set(wait: 1.minute).perform_later(id)
+        PostVideoConversionJob.perform_in(1.minute, id)
       else
-        PostVideoConversionJob.perform_later(id)
+        PostVideoConversionJob.perform_async(id)
       end
     end
 
@@ -323,7 +305,7 @@ class Post < ApplicationRecord
 
     def generate_image_samples(later: false)
       if later
-        PostImageSamplerJob.set(wait: 1.minute).perform_later(id)
+        PostImageSamplerJob.perform_in(1.minute, id)
       else
         ImageSampler.generate_post_images(self)
       end
@@ -347,7 +329,7 @@ class Post < ApplicationRecord
       if ai_score[:score] >= 50
         PostFlag.create(
           post: self,
-          reason_name: "uploading_guidelines",
+          reason_name: Setting.ai_flag_reason,
           note: "AI score: #{ai_score[:score]}\n#{ai_score[:reason]}",
           creator_id: User.system.id,
           creator_ip_addr: "192.168.0.1",
@@ -459,6 +441,9 @@ class Post < ApplicationRecord
     def unapprove!
       PostEvent.add(id, CurrentUser.user, :unapproved)
       update(approver: nil, is_pending: true)
+
+      # Roll back previous karma changes for the uploader
+      UserStatus.adjust_karma(uploader_id, -UserStatus::KARMA_APPROVED_CREDIT, :unapproved, post_id: id)
     end
 
     def is_unapprovable?(user)
@@ -471,7 +456,7 @@ class Post < ApplicationRecord
     end
 
     def approve!(approver = CurrentUser.user)
-      return if self.approver != nil
+      return unless is_approvable?
 
       # Not ideal, but does the job
       orig = self.replacements.find_by(status: "original")
@@ -484,6 +469,9 @@ class Post < ApplicationRecord
         approvals.create(user: approver)
         update(approver: approver, is_pending: false)
       end
+
+      # Reward the uploader for a post that cleared the review queue.
+      UserStatus.adjust_karma(uploader_id, UserStatus::KARMA_APPROVED_CREDIT, :approved, post_id: id)
     end
   end
 
@@ -541,6 +529,7 @@ class Post < ApplicationRecord
     def copy_sources_to_parent
       return unless parent_id.present?
       parent.source += "\n#{self.source}"
+      set_merge_edit_reason
     end
   end
 
@@ -665,12 +654,13 @@ class Post < ApplicationRecord
         set_tag_string(((current_tags + new_tags) - old_tags + (current_tags & new_tags)).uniq.sort.join(" "))
       end
 
-      if old_parent_id == ""
-        old_parent_id = nil
-      else
-        old_parent_id = old_parent_id.to_i
-      end
-      if old_parent_id == parent_id
+      normalized_old_parent_id = if old_parent_id == ""
+                                   nil
+                                 else
+                                   old_parent_id.to_i
+                                 end
+
+      if normalized_old_parent_id == parent_id
         self.parent_id = parent_id_before_last_save || parent_id_was
       end
 
@@ -680,6 +670,10 @@ class Post < ApplicationRecord
 
       if old_rating == rating
         self.rating = rating_before_last_save || rating_was
+      end
+
+      if old_description == description.to_s
+        self.description = description_before_last_save || description_was
       end
     end
 
@@ -817,7 +811,14 @@ class Post < ApplicationRecord
     def add_automatic_tags(tags)
       return tags unless Danbooru.config.enable_dimension_autotagging?
 
-      tags -= %w[thumbnail low_res hi_res ultra_res super_res absurd_res huge_filesize wide_image tall_image long_image flash webm mp4 long_playtime short_playtime widescreen ultrawide superwide]
+      tags -= %w[
+        thumbnail low_res hi_res absurd_res superabsurd_res
+        huge_filesize 
+        wide_image tall_image long_image
+        flash webm mp4 video
+        long_playtime short_playtime
+        animated_gif animated_png animated_webp
+      ] + FileMethods::FILE_TYPE.values
 
       if has_dimensions?
         tags << "widescreen" if (image_width.to_f/image_height.to_f) >= 1.49 || (image_width.to_f/image_height.to_f) <= 0.65 # 3:2 or 2:3 with slight wiggle room
@@ -844,39 +845,46 @@ class Post < ApplicationRecord
       tags << "huge_filesize" if file_size >= 30.megabytes
 
       tags << "flash" if is_flash?
-      tags << "webm" if is_webm?
+      tags << "video" if is_video?
       tags << "mp4" if is_mp4?
+      tags << "webm" if is_webm?
 
-      tags << "long_playtime" if is_video? && duration >= 30
-      tags << "short_playtime" if is_video? && duration < 30
+      tags << "animated_gif" if is_gif? && is_animated?
+      tags << "animated_png" if is_png? && is_animated?
+      tags << "animated_webp" if is_webp? && is_animated?
 
-      # TODO: Automatically add animated_* tags without re-testing them on every edit
-      tags -= ["animated_gif"] unless is_gif?
-      tags -= ["animated_png"] unless is_png?
-      tags -= ["animated_webp"] unless is_webp?
+      tags << "long_playtime" if duration.present? && (is_video? || tags.include?("animated_gif")) && duration >= 30
+      tags << "short_playtime" if duration.present? && (is_video? || tags.include?("animated_gif")) && duration < 30
 
       tags
     end
 
     def apply_casesensitive_metatags(tags)
-      casesensitive_metatags, tags = tags.partition {|x| x =~ /\A(?:source):/i}
+      casesensitive_metatags, tags = tags.partition {|x| x =~ /\A(?:\+?source):/i}
       #Reuse the following metatags after the post has been saved
       casesensitive_metatags += tags.select {|x| x =~ /\A(?:newpool):/i}
       if casesensitive_metatags.length > 0
-        case casesensitive_metatags[-1]
-        when /^source:none$/i
-          self.source = ""
+        casesensitive_metatags.each do |metatag|
+          case metatag
+          when /^source:none$/i
+            self.source = ""
 
-        when /^source:"(.*)"$/i
-          self.source = $1
+          when /^\+source:none$/i
+            next
 
-        when /^source:(.*)$/i
-          self.source = $1
+          when /^source:("?)(.*)\1$/i
+            self.source = $2
 
-        when /^newpool:(.+)$/i
-          pool = Pool.find_by_name($1)
+          when /^\+source:("?)(.*)\1$/i
+            self.source = self.source.blank? ? $2 : "#{self.source}\n#{$2}"
+          end
+        end
+
+        if (newpool = casesensitive_metatags.grep(/^newpool:(.+)$/i).last)
+          pool_name = newpool.match(/^newpool:(.+)$/i)[1]
+          pool = Pool.find_by_name(pool_name)
           if pool.nil?
-            pool = Pool.create(name: $1, description: "")
+            pool = Pool.create(name: pool_name, description: "")
           end
         end
       end
@@ -985,16 +993,19 @@ class Post < ApplicationRecord
 
         when /^child:none$/i
           children.each do |post|
+            remove_child_edit_reason(post)
             post.update!(parent_id: nil)
           end
 
         when /^-child:(.+)$/i
           children.numeric_attribute_matches(:id, $1).each do |post|
+            remove_child_edit_reason(post)
             post.update!(parent_id: nil)
           end
 
         when /^child:(.+)$/i
           Post.numeric_attribute_matches(:id, $1).where.not(id: id).limit(10).each do |post|
+            add_child_edit_reason(post)
             post.update!(parent_id: id)
           end
         end
@@ -1025,10 +1036,10 @@ class Post < ApplicationRecord
           self.rating = $1
 
         when /^(-?)locked:notes?$/i
-          self.is_note_locked = ($1 != "-") if CurrentUser.is_janitor?
+          self.is_note_locked = ($1 != "-") if CurrentUser.is_staff?
 
         when /^(-?)locked:rating$/i
-          self.is_rating_locked = ($1 != "-") if CurrentUser.is_janitor?
+          self.is_rating_locked = ($1 != "-") if CurrentUser.is_privileged?
 
         when /^(-?)locked:status$/i
           self.is_status_locked = ($1 != "-") if CurrentUser.is_admin?
@@ -1089,6 +1100,7 @@ class Post < ApplicationRecord
     def copy_tags_to_parent
       return unless parent_id.present?
       parent.tag_string += " #{tag_string}"
+      set_merge_edit_reason
     end
 
     ## DB!
@@ -1117,12 +1129,28 @@ class Post < ApplicationRecord
       categorized_tags[category] || []
     end
 
-    ##
+    ## DB!
     # List of artist tags for the post
     # Excludes non-artist tags like avoid_posting or sound_warning
     def artist_tags
-      @artist_tags ||= tags_for_category(Tag.categories.artist).filter do |tag|
-        NON_ARTIST_TAGS.exclude?(tag.name)
+      @artist_tags ||= begin
+        if @categorized_tags.nil?
+          Tag.where(name: tag_array, category: Tag.categories.artist).select(:name, :post_count, :category).filter do |tag|
+            NON_ARTIST_TAGS.exclude?(tag.name)
+          end
+        else
+          tags_for_category(Tag.categories.artist).filter do |tag|
+            NON_ARTIST_TAGS.exclude?(tag.name)
+          end
+        end
+      end
+    end
+
+    ## DB!
+    # Like `artist_tags`, but also excludes artist tags that aren't known to be actual artists
+    def known_artist_tags
+      @known_artist_tags ||= artist_tags.filter do |tag|
+        NON_KNOWN_ARTIST_TAGS.exclude?(tag.name)
       end
     end
 
@@ -1147,70 +1175,105 @@ class Post < ApplicationRecord
     end
 
     ## DB!
-    # Fetches the avoid posting data for the post's artist tags.
+    # Fetches the avoid posting data for all artist, copyright, and character tags on the post.
     # Sends a db request to lookup avoid posting data.
-    def avoid_posting_artists
-      @avoid_posting_artists ||= begin
-        artist_names = artist_tags.map(&:name)
-        return [] if artist_names.empty?
-        AvoidPosting.active.joins(:artist).where(artists: { name: artist_names }).includes(:artist).to_a
+    def avoid_posting_tags
+      @avoid_posting_tags ||= begin
+        # We only care about artist, copyright, and character tags.
+        if @categorized_tags.nil?
+          candidate_names = tag_array
+          if new_record? || tag_string_changed?
+            # Apply canonicalization if the raw tag string had not gone through normalize_tags yet.
+            candidate_names = candidate_names.map { |name| name.downcase.sub(/\A(#{Tag.categories.regexp}):/, "") }
+            candidate_names = TagAlias.to_aliased(candidate_names)
+          end
+          tags = Tag
+                 .where(name: candidate_names, category: [Tag.categories.artist, Tag.categories.copyright, Tag.categories.character])
+                 .pluck(:name)
+                 .filter { |tag| NON_ARTIST_TAGS.exclude?(tag) }
+        else
+          tags = (
+            tags_for_category(Tag.categories.artist) +
+            tags_for_category(Tag.categories.copyright) +
+            tags_for_category(Tag.categories.character)
+          ).map(&:name).filter { |tag| NON_ARTIST_TAGS.exclude?(tag) }
+        end
+
+        if tags.empty?
+          []
+        else
+          # Despite the name, copyright and character tags can also have Artist and AvoidPosting entries
+          AvoidPosting.active.joins(:artist).where(artists: { name: tags }).includes(:artist).to_a
+        end
       end
     end
   end
 
   module FavoriteMethods
-    def clean_fav_string!
-      array = fav_string.split.uniq
-      self.fav_string = array.join(" ")
-      self.fav_count = array.size
+    extend ActiveSupport::Concern
+
+    module ClassMethods
+      # Bulk-populate the favorited-by status for a collection of posts so that
+      # subsequent `favorited_by?(user_id)` calls return without hitting the DB.
+      def preload_favorited_status!(posts, user_id)
+        posts = Array.wrap(posts).compact
+        return if posts.empty? || user_id.blank?
+
+        favorited_ids = Favorite.where(user_id: user_id, post_id: posts.map(&:id)).pluck(:post_id).to_set
+        posts.each { |post| post.preset_favorited_status(user_id, favorited_ids.include?(post.id)) }
+      end
+
+      # Bulk-populate both favorited-by and vote status for a collection of posts so
+      # that rendering thumbnails doesn't issue a query per post. Skips anonymous
+      # users, who never have favorites or votes.
+      def preload_stats!(posts, user = CurrentUser.user)
+        return if user.nil? || user.is_logged_out?
+        preload_favorited_status!(posts, user.id)
+        preload_vote_by!(posts, user.id)
+      end
+    end
+
+    def preset_favorited_status(user_id, value)
+      @favorited_status_cache ||= {}
+      @favorited_status_cache[user_id] = value
     end
 
     def favorited_by?(user_id = CurrentUser.id)
-      !!(fav_string =~ /(?:\A| )fav:#{user_id}(?:\Z| )/)
+      return false if user_id.blank?
+      cached = @favorited_status_cache&.[](user_id)
+      return cached unless cached.nil?
+
+      is_favorited = Favorite.exists?(user_id: user_id, post_id: id)
+      preset_favorited_status(user_id, is_favorited)
+      is_favorited
     end
 
     alias_method :is_favorited?, :favorited_by?
 
-    def append_user_to_fav_string(user_id)
-      # Regex is faster for large fav_strings, array include? is faster for small fav_strings.
-      # Checking for presence is faster than explicit deduplication for both approaches.
-      if fav_count > 1000
-        unless fav_string =~ /(?:\A| )fav:#{user_id}(?:\Z| )/
-          self.fav_string = (fav_string + " fav:#{user_id}").strip
-          self.fav_count = fav_string.split.size
-        end
-      else
-        fav_array = fav_string.split
-        fav_tag = "fav:#{user_id}"
-
-        unless fav_array.include?(fav_tag)
-          fav_array << fav_tag
-          self.fav_string = fav_array.join(" ")
-          self.fav_count = fav_array.size
-        end
-      end
+    def reload(*)
+      @favorited_status_cache = nil
+      @vote_by_cache = nil
+      super
     end
 
-    def delete_user_from_fav_string(user_id)
-      new_fav_string = fav_string.gsub(/(?:\A| )fav:#{user_id}(?:\Z| )/, " ").strip
-      if new_fav_string != fav_string
-        self.fav_string = new_fav_string
-        self.fav_count = new_fav_string.split.size
-      end
+    # Recompute fav_count from the favorites table, the source of truth. Leaves
+    # fav_count dirty so a following post.save runs an UPDATE and triggers the
+    # after_save reindex.
+    def refresh_fav_count
+      self.fav_count = Favorite.where(post_id: id).count
     end
 
-    # users who favorited this post, ordered by users who favorited it first
+    # users who favorited this post, ordered by when they favorited it
     def favorited_users
-      favorited_user_ids = fav_string.scan(/\d+/).map(&:to_i)
+      favorited_user_ids = Favorite.where(post_id: id).order(:id).pluck(:user_id)
       visible_users = User.find(favorited_user_ids).reject(&:hide_favorites?)
-      ordered_users = visible_users.index_by(&:id).slice(*favorited_user_ids).values
-      ordered_users
+      visible_users.index_by(&:id).slice(*favorited_user_ids).values
     end
 
     def remove_from_favorites
+      user_ids = Favorite.where(post_id: id).pluck(:user_id)
       Favorite.where(post_id: id).delete_all
-      user_ids = fav_string.scan(/\d+/)
-      UserStatus.where(:user_id => user_ids).update_all("favorite_count = favorite_count - 1")
+      UserStatus.where(user_id: user_ids).update_all("favorite_count = favorite_count - 1") if user_ids.any?
     end
   end
 
@@ -1228,35 +1291,77 @@ class Post < ApplicationRecord
       end
       User.id_to_name(uploader_id)
     end
+
+    def previous_version_uploaders
+      previous_uploader_ids = replacements
+                              .where(status: %w[original approved])
+                              .where.not(creator_id: uploader_id)
+                              .distinct
+                              .pluck(:creator_id)
+      User.where(id: previous_uploader_ids)
+    end
+
+    # Reowner the post and return the old owner id, or nil if nothing changed.
+    # Transfers the post's upload karma between the owners unless karma: false.
+    def reowner!(new_owner, reowner_versions: false, post_events: true, karma: true)
+      raise ::User::PrivilegeError unless CurrentUser.is_janitor?
+      raise ::User::PrivilegeError if (reowner_versions || !post_events || !karma) && !CurrentUser.is_bd_staff?
+
+      new_owner_id = new_owner&.id
+      raise ::User::PrivilegeError, "Cannot assign a new owner that isn't a previous owner" unless
+        CurrentUser.is_admin? || previous_version_uploaders.any? { |uploader| uploader.id == new_owner_id }
+
+      old_owner_id = uploader_id
+      return nil if new_owner_id == old_owner_id # nothing to do
+
+      self.do_not_version_changes = true
+      return nil unless update({ uploader_id: new_owner_id })
+
+      if karma
+        # Takedown-deleted posts never had a penalty applied (delete! ran with
+        # skip_karma), so there is nothing to transfer. Same detection as TakedownJob.
+        from_takedown = deleted_by_takedown?
+        # delta = the net karma the owner currently holds for this post:
+        # - Deleted: a flat -KARMA_DELETION_PENALTY regardless of history. A
+        #   pending->deleted post only ever took the penalty; an approved->deleted
+        #   post took the credit and then penalty + credit reversal - the credit
+        #   and its reversal cancel, landing at the bare penalty either way.
+        # - Approved (not pending, not deleted - includes flagged and
+        #   self-approved posts): the approved credit.
+        # - Pending: nothing awarded yet.
+        delta =
+          if is_deleted?
+            -UserStatus::KARMA_DELETION_PENALTY
+          elsif !is_pending?
+            UserStatus::KARMA_APPROVED_CREDIT
+          else
+            0
+          end
+        if delta != 0 && !from_takedown
+          transfer_data = { old_owner: old_owner_id, new_owner: new_owner_id }
+          UserStatus.adjust_karma(old_owner_id, -delta, :owner_change, post_id: id, data: transfer_data)
+          UserStatus.adjust_karma(new_owner_id, delta, :owner_change, post_id: id, data: transfer_data)
+        end
+      end
+
+      if reowner_versions
+        versions.where(updater_id: old_owner_id).find_each do |version|
+          version.update_column(:updater_id, new_owner_id)
+          version.update_index
+        end
+      end
+
+      if post_events
+        PostEvent.add(id, CurrentUser.user, :owner_changed, { old_owner: old_owner_id, new_owner: new_owner_id })
+      end
+
+      old_owner_id
+    end
   end
 
   module SetMethods
-    def set_ids
-      pool_string.scan(/set:(\d+)/).map { |set| ParseValue.safe_id(set[0]) }
-    end
-
     def post_sets
-      @post_sets ||= begin
-        return PostSet.none if pool_string.blank?
-        PostSet.where(id: set_ids)
-      end
-    end
-
-    def belongs_to_post_set(set)
-      pool_string =~ /(?:\A| )set:#{set.id}(?:\z| )/
-    end
-
-    def add_set!(set, force = false)
-      return if belongs_to_post_set(set) && !force
-      with_lock do
-        self.pool_string = "#{pool_string} set:#{set.id}".strip
-      end
-    end
-
-    def remove_set!(set)
-      with_lock do
-        self.pool_string = (pool_string.split(' ') - ["set:#{set.id}"]).join(' ').strip
-      end
+      @post_sets ||= new_record? ? PostSet.none : PostSet.where("post_ids @> ARRAY[?]::int[]", id)
     end
 
     def give_post_sets_to_parent
@@ -1281,13 +1386,15 @@ class Post < ApplicationRecord
   end
 
   module PoolMethods
+    # Denormalizes pools.post_ids, which remains the source of truth
+    # (db/fixes/141 reconciles). NULL-safe until the column gains NOT NULL.
     def pool_ids
-      pool_string.scan(/pool:(\d+)/).map { |pool| ParseValue.safe_id(pool[0]) }
+      self[:pool_ids] || []
     end
 
     def pools
       @pools ||= begin
-        return Pool.none if pool_string.blank?
+        return Pool.none if pool_ids.empty?
         Pool.where(id: pool_ids).series_first
       end
     end
@@ -1297,14 +1404,18 @@ class Post < ApplicationRecord
     end
 
     def belongs_to_pool?(pool)
-      pool_string =~ /(?:\A| )pool:#{pool.id}(?:\Z| )/
+      pool_ids.include?(pool.id)
     end
 
+    # Mutates pool_ids under a row lock; the caller must save inside the same
+    # transaction that holds the lock (Pool#add!/remove! via pool.with_lock,
+    # Pool#synchronize inside after_save, PostSetCleanupJob's batch transaction).
     def add_pool!(pool)
       return if belongs_to_pool?(pool)
 
       with_lock do
-        self.pool_string = "#{pool_string} pool:#{pool.id}".strip
+        # Sorted to match the canonical order produced by db/fixes/141.
+        self[:pool_ids] = (pool_ids | [pool.id]).sort
       end
     end
 
@@ -1313,7 +1424,7 @@ class Post < ApplicationRecord
       return unless CurrentUser.user.can_remove_from_pools?
 
       with_lock do
-        self.pool_string = pool_string.gsub(/(?:\A| )pool:#{pool.id}(?:\Z| )/, " ").strip
+        self[:pool_ids] = pool_ids - [pool.id]
       end
     end
 
@@ -1325,9 +1436,49 @@ class Post < ApplicationRecord
   end
 
   module VoteMethods
+    extend ActiveSupport::Concern
+
+    module ClassMethods
+      # Bulk-populate the user's vote score for a collection of posts so that
+      # subsequent `vote_by(user_id)` calls return without hitting the DB.
+      def preload_vote_by!(posts, user_id)
+        posts = Array.wrap(posts).compact
+        return if posts.empty? || user_id.blank?
+
+        scores = PostVote.where(user_id: user_id, post_id: posts.map(&:id)).pluck(:post_id, :score).to_h
+        posts.each { |post| post.preset_vote_by(user_id, scores.fetch(post.id, 0)) }
+      end
+    end
+
+    def preset_vote_by(user_id, score)
+      @vote_by_cache ||= {}
+      @vote_by_cache[user_id] = score
+    end
+
     def own_vote(user = CurrentUser.user)
       return nil unless user
       votes.where("user_id = ?", user.id).first
+    end
+
+    # Returns -1, 0, or 1. A missing or locked PostVote both yield 0.
+    def vote_by(user_id = CurrentUser.id)
+      return 0 if user_id.blank?
+      cached = @vote_by_cache&.[](user_id)
+      return cached unless cached.nil?
+
+      score = PostVote.where(user_id: user_id, post_id: id).pick(:score) || 0
+      preset_vote_by(user_id, score)
+      score
+    end
+
+    def compute_hotness
+      sign = score <=> 0 # -1, 0, or 1
+      (sign * Math.log10([score.abs, 1].max)) + (created_at.to_f / HOTNESS_TIME_DIVISOR)
+    end
+
+    # Must be run on creation and after every score change.
+    def update_hotness!
+      update_column(:hotness, compute_hotness)
     end
   end
 
@@ -1432,7 +1583,7 @@ class Post < ApplicationRecord
     end
 
     def give_favorites_to_parent
-      TransferFavoritesJob.perform_later(id, CurrentUser.id)
+      TransferFavoritesJob.perform_async(id, CurrentUser.id)
     end
 
     def parent_exists?
@@ -1458,6 +1609,19 @@ class Post < ApplicationRecord
       if has_children?
         @children_ids ||= children.map {|p| p.id}.join(' ')
       end
+    end
+
+    def set_merge_edit_reason
+      return unless parent_id.present?
+      parent.edit_reason = "Merged from post ##{self.id}"
+    end
+
+    def remove_child_edit_reason(post)
+      post.edit_reason = "Removed as child of post ##{id}"
+    end
+
+    def add_child_edit_reason(post)
+      post.edit_reason = "Added as child of post ##{id}"
     end
   end
 
@@ -1529,12 +1693,15 @@ class Post < ApplicationRecord
           errors.add(:base, "Cannot delete with given reason when no active flag exists.")
           return
         end
-        if pending_flag.reason =~ /uploading_guidelines/
-          errors.add(:base, "Cannot delete with given reason when the flag is for uploading guidelines.")
+        if pending_flag.needs_staff_reason?
+          errors.add(:base, "Cannot \"delete with given reason\" for this flag reason.")
           return
         end
         reason = pending_flag.reason
       end
+
+      # Capture whether the post held a +1 upload-karma credit *before* the update below clears it.
+      was_credited = !is_pending?
 
       force_flag = options.fetch(:force, false)
       Post.with_timeout(30_000) do
@@ -1552,6 +1719,7 @@ class Post < ApplicationRecord
           )
           decrement_tag_post_counts
           move_files_on_delete
+          delete_avatar_crops
           PostEvent.add(id, CurrentUser.user, :deleted, { reason: reason })
         end
       end
@@ -1559,6 +1727,16 @@ class Post < ApplicationRecord
       # XXX This must happen *after* the `is_deleted` flag is set to true (issue #3419).
       # We don't care if these fail per-se so they are outside the transaction.
       UserStatus.for_user(uploader_id).update_all("post_deleted_count = post_deleted_count + 1")
+
+      # Penalize the uploader for a deleted post (includes auto-deletions).
+      # A post that had cleared the queue also carried the approved credit, so deleting it
+      # reverses that credit on top of the deletion penalty; a still-pending post never earned
+      # the credit, so it is only the penalty.
+      # Takedowns pass skip_karma: removal reflects the artist's wishes, not the uploader's conduct.
+      unless options[:skip_karma]
+        penalty = UserStatus::KARMA_DELETION_PENALTY + (was_credited ? UserStatus::KARMA_APPROVED_CREDIT : 0)
+        UserStatus.adjust_karma(uploader_id, -penalty, :deleted, post_id: id, data: { credit_reversed: was_credited })
+      end
       give_favorites_to_parent if options[:move_favorites]
       give_post_sets_to_parent if options[:move_favorites]
       reject_pending_replacements
@@ -1594,15 +1772,43 @@ class Post < ApplicationRecord
         PostEvent.add(id, CurrentUser.user, :undeleted)
       end
       move_files_on_undelete
+      User.where(avatar_id: id).pluck(:id).each { |uid| UserAvatarUrlCache.invalidate(uid) }
       UserStatus.for_user(uploader_id).update_all("post_deleted_count = post_deleted_count - 1")
+
+      # A restored post is always approved (undelete clears is_pending and sets an approver),
+      # so it is always worth the approved credit. delete! drove every deleted post down to the
+      # deletion penalty (reversing the credit for posts that had one), so restoring penalty +
+      # credit lands the post back at the credit in every case. skip_karma restores from a
+      # takedown, which never applied the penalty to begin with.
+      unless options[:skip_karma]
+        UserStatus.adjust_karma(uploader_id, UserStatus::KARMA_DELETION_PENALTY + UserStatus::KARMA_APPROVED_CREDIT, :undeleted, post_id: id)
+      end
     end
 
     def deletion_flag
-      flags.order(id: :desc).first
+      flags.unresolved.where(is_deletion: true).order(id: :desc).first
     end
 
     def pending_flag
-      flags.unresolved.order(id: :desc).first
+      flags.unresolved.where(is_deletion: false).order(id: :desc).first
+    end
+
+    def substitute_deletion_dmail_template(text, reason = nil)
+      return nil if text.blank?
+      if reason
+        text = text.gsub("%REASON%", reason)
+      end
+      if (flag_id = deletion_flag&.id)
+        text = text.gsub("%FLAG_ID%", flag_id.to_s)
+      end
+      text.gsub("%POST_ID%", id.to_s)
+          .gsub("%STAFF_NAME%", CurrentUser.name)
+          .gsub("%STAFF_ID%", CurrentUser.id.to_s)
+          .gsub("%UPLOADER_ID%", uploader_id.to_s)
+    end
+
+    def deleted_by_takedown?
+      is_deleted? && deletion_flag&.reason.to_s.start_with?("takedown #")
     end
   end
 
@@ -1690,15 +1896,15 @@ class Post < ApplicationRecord
 
   module ApiMethods
     def hidden_attributes
-      list = super + [:pool_string, :fav_string]
+      list = super + [:pool_ids]
       if !visible?
         list += [:md5, :file_ext]
       end
-      super + list
+      list
     end
 
     def method_attributes
-      list = super + %i[has_sample has_visible_children children_ids pool_ids is_favorited?]
+      list = super + %i[has_sample has_visible_children children_ids pool_ids is_favorited? vote_by]
       if visible?
         list += %i[file_url sample_url preview_file_url]
       end
@@ -1724,6 +1930,8 @@ class Post < ApplicationRecord
         score: score,
         fav_count: fav_count,
         is_favorited: favorited_by?(CurrentUser.user.id),
+        vote: vote_by(CurrentUser.user.id),
+        comment_count: comment_count,
 
         pools: pool_ids.join(" "),
       }
@@ -1731,6 +1939,7 @@ class Post < ApplicationRecord
       if visible?
         attributes[:md5] = md5
         attributes[:preview_url] = preview_file_url
+        attributes[:preview_webp] = preview_file_url(:preview_webp)
         attributes[:sample_url] = sample_url
         attributes[:file_url] = file_url
         attributes[:preview_width] = preview_dimensions[0]
@@ -1851,14 +2060,14 @@ class Post < ApplicationRecord
     module ClassMethods
       def remove_iqdb(post_id)
         if IqdbProxy.enabled?
-          IqdbRemoveJob.perform_later(post_id)
+          IqdbRemoveJob.perform_async(post_id)
         end
       end
     end
 
     def update_iqdb_async
       if IqdbProxy.enabled? && has_preview?
-        IqdbUpdateJob.perform_later(id)
+        IqdbUpdateJob.perform_async(id)
       end
     end
 
@@ -1893,6 +2102,21 @@ class Post < ApplicationRecord
       if saved_change_to_bg_color?
         PostEvent.add(id, CurrentUser.user, :changed_bg_color, { bg_color: bg_color })
       end
+    end
+  end
+
+  module ChangeSeqMethods
+    # Reads the columns the live posts_trigger_change_seq() trigger checks, straight from
+    # Postgres, so this can't drift out of sync with the migration that defines it.
+    # @return [Array<Symbol>] the posts columns the trigger currently compares
+    def change_seq_tracked_columns
+      ActiveRecord::Migration.existing_change_seq_columns.map(&:to_sym)
+    end
+
+    # Columns tracked by neither the trigger nor CHANGE_SEQ_IGNORED - should always be empty.
+    # @return [Array<Symbol>] posts columns nobody has categorized yet
+    def change_seq_untracked_columns
+      column_names.map(&:to_sym) - change_seq_tracked_columns - CHANGE_SEQ_IGNORED
     end
   end
 
@@ -2006,6 +2230,7 @@ class Post < ApplicationRecord
   include IqdbMethods
   include ValidationMethods
   include PostEventMethods
+  extend ChangeSeqMethods
   include Danbooru::HasBitFlags
   include DocumentStore::Model
   include PostIndex
@@ -2016,6 +2241,8 @@ class Post < ApplicationRecord
     hide_from_anonymous
     hide_from_search_engines
     favorites_transfer_in_progress
+    hide_favorites_list
+    is_animated
   ].freeze
   has_bit_flags BOOLEAN_ATTRIBUTES
 
@@ -2029,7 +2256,7 @@ class Post < ApplicationRecord
   end
 
   def loginblocked?
-    CurrentUser.is_anonymous? && (hide_from_anonymous? || Danbooru.config.user_needs_login_for_post?(self))
+    CurrentUser.user.is_logged_out? && (hide_from_anonymous? || Danbooru.config.user_needs_login_for_post?(self))
   end
 
   def visible?
@@ -2059,6 +2286,7 @@ class Post < ApplicationRecord
     @categorized_tags = nil
     @artist_tags = nil
     @uploader_linked_artists = nil
+    @avoid_posting_tags = nil
 
     @has_dimensions = nil
     @preview_dimensions = nil
@@ -2085,10 +2313,6 @@ class Post < ApplicationRecord
     end
 
     save
-  end
-
-  def flaggable_for_guidelines?
-    !has_tag?("grandfathered_content") && created_at.after?("2015-01-01")
   end
 
   def visible_comment_count(user)

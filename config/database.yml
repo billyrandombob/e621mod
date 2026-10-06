@@ -9,11 +9,12 @@ development:
   <<: *default
   database: e621_development
   host: postgres
-  pool: 5
+  # Covers the Procfile sidekiq process: default capsule (5) + media (2) + iqdb (1)
+  pool: 10
 
 test:
   <<: *default
-  database: e621_test
+  database: e621_test<%= ENV["TEST_ENV_NUMBER"] %>
   host: postgres
   pool: 5
 

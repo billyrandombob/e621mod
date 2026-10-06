@@ -1,4 +1,6 @@
-body.c-posts.a-index, body.c-favorites.a-index {
+body.c-posts.a-index,
+body.c-posts.a-recommended,
+body.c-favorites.a-index {
   #page {
     // Override the theme to instead
     // project it upon the content area
@@ -9,11 +11,16 @@ body.c-posts.a-index, body.c-favorites.a-index {
   // Exhibit A
   // Makes the content area take up the
   // full height of the page. Yes, really.
-  #page, #c-posts, #c-favorites, #a-index {
+  #page, #c-posts, #c-favorites, #a-index, #a-recommended {
     // I hate both this and myself
     display: flex;
     flex-flow: column;
     flex: 1;
+  }
+
+  .posts-next-random {
+    display: block;
+    margin: 1rem auto;
   }
 }
 
@@ -23,9 +30,9 @@ body.c-posts.a-index, body.c-favorites.a-index {
   display: grid;
 
   grid-template-areas:
-    "search " 
-    "content" 
-    "sidebar";
+    "search  "
+    "content "
+    "sidebar ";
   grid-template-columns: 1fr;
   grid-template-rows: min-content 1fr min-content;
 
@@ -61,25 +68,30 @@ body.c-posts.a-index, body.c-favorites.a-index {
       background: themed("color-foreground");
       border-radius: 0 0 0.25rem 0.25rem;
 
-      #search-fullscreen { display: none; }
-      #search-settings {
+      #toggle-fullscreen { display: none; }
+
+      .sc-btn {
         height: 1.25rem;
         width: 2rem;
-        justify-content: center;
-        svg { height: 1rem; }
-      }
-
-      button {
-        height: 1.5rem;
         padding: 0;
 
         svg {
-          height: 1.25rem;
+          height: 1rem;
           width: 1.25rem;
           padding: 0.25rem;
           margin: -0.125rem 0;
         }
       }
+    }
+
+    .favorites-order-warning {
+      background: themed("color-section");
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 0.25rem;
+      padding: 0.25rem;
+      @include st-radius;
+      text-align: center;
     }
   }
 
@@ -97,6 +109,7 @@ body.c-posts.a-index, body.c-favorites.a-index {
     background-image: themed("image-foreground");
     background-position: themed("image-foreground-position");
     background-repeat: themed("image-foreground-repeat");
+    background-size: themed("image-foreground-size");
 
     // Actual content area:
     // posts and pagination
@@ -114,7 +127,7 @@ body.c-posts.a-index, body.c-favorites.a-index {
     }
   }
 
-  // 3. Sidebar
+  // 5. Sidebar
   & > .sidebar {
     grid-area: sidebar;
 
@@ -122,8 +135,13 @@ body.c-posts.a-index, body.c-favorites.a-index {
     flex-flow: column;
     gap: 1em;
 
-    padding: 0.5rem 0.25rem;
+    padding: 0.5rem .75rem var(--content-padding-bottom);
     box-shadow: inset 0px 0.25rem 0.25rem -0.25rem themed("color-background");
+
+    #mode-box label {
+      font-size: 1.16667em;
+      line-height: 1.5rem;
+    }
 
     // Mode selection
     #mode-box-mode, #mode-box #set-id {

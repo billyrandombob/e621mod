@@ -23,11 +23,12 @@ Bundler.require(*Rails.groups)
 require_relative "danbooru_default_config"
 require_relative "danbooru_local_config"
 require_relative "../lib/middleware/parameter_sanitizer"
+require_relative "../lib/migration_helpers"
 
 module Danbooru
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
-    config.load_defaults 8.0
+    config.load_defaults 8.1
 
     # https://github.com/rails/rails/issues/50897
     config.active_record.raise_on_assign_to_attr_readonly = false

@@ -3,6 +3,11 @@
 class TagRelationship < ApplicationRecord
   self.abstract_class = true
 
+  # Raised when an undo is refused for a reason that will not go away on its
+  # own; the undo jobs discard instead of retrying when they see this.
+  class UndoError < StandardError; end
+
+  POST_LIMIT = 10_000
   SUPPORT_HARD_CODED = true
 
   belongs_to_creator
@@ -85,9 +90,27 @@ class TagRelationship < ApplicationRecord
     is_pending? && user.is_admin?
   end
 
+  # Non-raising mirror of validate_undoable! for UI gating.
+  def undoable_by?(user)
+    return false unless user.is_admin?
+    validate_undoable!
+    true
+  rescue UndoError
+    false
+  end
+
+  # Posts affected by an undo, for the confirmation prompt. Counted in SQL
+  # so the potentially large posts chunks are never loaded into Ruby.
+  def undo_post_count
+    tag_rel_undos.unapplied.posts_chunks
+                 .sum(Arel.sql("(SELECT count(*) FROM json_object_keys(undo_data -> 'added'))"))
+                 .to_i
+  end
+
   module SearchMethods
     def name_matches(name)
-      where("(antecedent_name like ? escape E'\\\\' or consequent_name like ? escape E'\\\\')", name.downcase.to_escaped_for_sql_like, name.downcase.to_escaped_for_sql_like)
+      name = name.downcase.strip.to_escaped_for_sql_like
+      where("(antecedent_name like ? escape E'\\\\' or consequent_name like ? escape E'\\\\')", name, name)
     end
 
     def status_matches(status)
@@ -133,11 +156,11 @@ class TagRelationship < ApplicationRecord
 
       if params[:antecedent_name].present?
         # Split at both space and , to preserve backwards compatibility
-        q = q.where(antecedent_name: params[:antecedent_name].split(/[ ,]/).first(100))
+        q = q.where(antecedent_name: params[:antecedent_name].split(/[ ,]/).first(Danbooru.config.max_per_page))
       end
 
       if params[:consequent_name].present?
-        q = q.where(consequent_name: params[:consequent_name].split(/[ ,]/).first(100))
+        q = q.where(consequent_name: params[:consequent_name].split(/[ ,]/).first(Danbooru.config.max_per_page))
       end
 
       if params[:status].present?
@@ -145,11 +168,11 @@ class TagRelationship < ApplicationRecord
       end
 
       if params[:antecedent_tag_category].present?
-        q = q.join_antecedent.where("antecedent_tag.category": params[:antecedent_tag_category].split(",").first(100))
+        q = q.join_antecedent.where("antecedent_tag.category": params[:antecedent_tag_category].split(",").first(Danbooru.config.max_per_page))
       end
 
       if params[:consequent_tag_category].present?
-        q = q.join_consequent.where("consequent_tag.category": params[:consequent_tag_category].split(",").first(100))
+        q = q.join_consequent.where("consequent_tag.category": params[:consequent_tag_category].split(",").first(Danbooru.config.max_per_page))
       end
 
       q = q.where_user(:creator_id, :creator, params)
@@ -218,6 +241,7 @@ class TagRelationship < ApplicationRecord
   end
 
   def update_posts
+    Thread.current[:skip_post_index_update] = true
     Post.without_timeout do
       Post.sql_raw_tag_match(antecedent_name).find_each do |post|
         post.with_lock do
@@ -229,6 +253,8 @@ class TagRelationship < ApplicationRecord
         end
       end
     end
+  ensure
+    Thread.current[:skip_post_index_update] = false
   end
 
   extend SearchMethods

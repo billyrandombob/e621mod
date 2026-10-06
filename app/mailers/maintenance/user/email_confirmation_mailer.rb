@@ -4,6 +4,8 @@ module Maintenance
   module User
     class EmailConfirmationMailer < ApplicationMailer
       def confirmation(user)
+        return unless deliverable_email?(user)
+
         @user = user
         mail(
           to: user_email(@user),

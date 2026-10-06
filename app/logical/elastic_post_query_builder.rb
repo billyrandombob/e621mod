@@ -8,10 +8,6 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
 
   ERROR_ON_DEPTH_EXCEEDED = true
 
-  # Must be >= 0; 0 removes all impact of date on rank.
-  # The smaller the value, the more shallow the initial curve.
-  RANK_EXPONENT = 0.4
-
   def initialize( # rubocop:disable Metrics/ParameterLists
     query,
     resolve_aliases: true,
@@ -38,6 +34,7 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
     @always_show_deleted = always_show_deleted
     @always_show_deleted ||= !query.hide_deleted_posts?(at_any_level: true) if GLOBAL_DELETED_FILTER && @depth <= 0
     @error_on_depth_exceeded = kwargs.fetch(:error_on_depth_exceeded, ERROR_ON_DEPTH_EXCEEDED)
+    @downstream_free_tags_count = @free_tags_count + (kwargs[:process_groups] || TagQuery.will_count_group_tags? ? 0 : query.tag_count)
     super(query)
   end
 
@@ -67,7 +64,7 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
         x = TagQuery.new(
           x,
           resolve_aliases: @resolve_aliases,
-          free_tags_count: @free_tags_count + @q.tag_count,
+          free_tags_count: @downstream_free_tags_count,
           error_on_depth_exceeded: @error_on_depth_exceeded,
           depth: @depth + 1,
           hoisted_metatags: nil,
@@ -77,7 +74,7 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
       temp = ElasticPostQueryBuilder.new(
         x,
         resolve_aliases: @resolve_aliases,
-        free_tags_count: @free_tags_count + @q.tag_count,
+        free_tags_count: @downstream_free_tags_count,
         enable_safe_mode: @enable_safe_mode,
         always_show_deleted: GLOBAL_DELETED_FILTER ? true : asd_cache,
         error_on_depth_exceeded: @error_on_depth_exceeded,
@@ -112,6 +109,7 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
     "md5_asc" => [{ md5: :asc }],
     "score" => [{ score: :desc }, { id: :desc }],
     "score_asc" => [{ score: :asc }, { id: :asc }],
+    "hot" => [{ hotness: :desc }, { id: :desc }],
     "duration" => [{ duration: :desc }, { id: :desc }],
     "duration_asc" => [{ duration: :asc }, { id: :asc }],
     "favcount" => [{ fav_count: :desc }, { id: :desc }],
@@ -135,6 +133,10 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
     "comment_bumped" => [{ comment_bumped_at: { order: :desc, missing: :_last } }, { id: :desc }],
     "comment_bumped_asc" => [{ comment_bumped_at: { order: :asc, missing: :_last } }, { id: :desc }],
     # "random" => [{ _score: :desc }],
+    "flagged" => [{ flagged_at: { order: :desc, missing: :_last } }, { id: :desc }],
+    "flagged_asc" => [{ flagged_at: { order: :asc, missing: :_last } }, { id: :asc }],
+    "deleted" => [{ deleted_at: { order: :desc, missing: :_last } }, { id: :desc }],
+    "deleted_asc" => [{ deleted_at: { order: :asc, missing: :_last } }, { id: :asc }],
   }).freeze.each_value(&:freeze)
 
   def build
@@ -216,10 +218,13 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
     add_array_relation(:rating, :rating)
     add_array_relation(:filetype, :file_ext)
     add_array_relation(:delreason, :del_reason, action: :wildcard)
+    add_array_relation(:flagreason, :flag_reason, action: :wildcard)
+    add_array_relation(:flagnote, :flag_note, action: :wildcard)
     add_array_relation(:description, :description, action: :match_phrase_prefix)
     add_array_relation(:note, :notes, action: :match_phrase_prefix)
     add_array_relation(:sources, :source, any_none_key: :source, action: :wildcard)
     add_array_relation(:deleter, :deleter)
+    add_array_relation(:flagger, :flagger)
     add_array_relation(:upvote, :upvotes)
     add_array_relation(:downvote, :downvotes)
 
@@ -295,33 +300,6 @@ class ElasticPostQueryBuilder < ElasticQueryBuilder
     # TODO: Add this to the `ElasticPostQueryBuilder::ORDER_TABLE` hash
     when /\A(#{TagCategory::SHORT_NAME_REGEX})tags(_asc)?\Z/
       order.push({ -"tag_count_#{TagCategory::SHORT_NAME_MAPPING[$1]}" => $2 ? :asc : :desc })
-
-    when "hot"
-      hot_from_time = q[:hot_from].is_a?(Date) ? q[:hot_from].to_time : q[:hot_from]
-      two_days_ago = 2.days.ago(hot_from_time || Time.current)
-      @function_score = {
-        script_score: {
-          script: {
-            params: { milliseconds_in_two_days: 172_800_000, two_days_ago: two_days_ago.to_i * 1000 },
-            # https://www.desmos.com/calculator/1hffttlyxp
-            # a = (doc['created_at'].value.millis - params.two_days_ago)
-            # b = (a / params.milliseconds_in_two_days)
-            # c = Math.abs(1.0 - b)
-            # d = Math.pow(c, #{RANK_EXPONENT})
-            # e = (d + 1.0)
-            # f = (e / 2.0)
-            # score = doc['score'].value * f
-            source: "doc['score'].value * ((Math.pow(Math.abs(1.0 - ((doc['created_at'].value.millis - params.two_days_ago) / params.milliseconds_in_two_days)), #{RANK_EXPONENT}) + 1.0) / 2.0)",
-          },
-        },
-      }
-      must.push({ range: { score: { gt: 0 } } })
-      must.push({ range: { created_at: if hot_from_time
-                                         { gte: two_days_ago, lte: hot_from_time }
-                                       else
-                                         { gte: two_days_ago }
-                                       end } })
-      order.push({ _score: :desc })
 
     when "random"
       order.push({ _score: :desc })

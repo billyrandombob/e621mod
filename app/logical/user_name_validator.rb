@@ -1,11 +1,22 @@
 # frozen_string_literal: true
 
 class UserNameValidator < ActiveModel::EachValidator
+  RESERVED_STAFF_NAMES = %w[system automod admin moderator _mod mod_ janitor staff support].freeze
+
   def validate_each(rec, attr, value)
     name = value
 
-    # Should be handled by presence validator instead
-    return if name.blank?
+    # Blank names should never be saved. This check ensures that on user creation and name change requests,
+    # an error is shown immediately instead of only requiring a name change on the next screen.
+    # Check if the presence validator already added an error for blank name to avoid duplicate error messages.
+    #
+    # Note that this only works if the presence validator is defined before this custom validator.
+    # If the order ever changes, this will break.
+    return if rec.errors.added?(attr, :blank)
+    if name.blank? # If the presence validator is not used, we still want to add an error for blank name.
+      rec.errors.add(attr, "can't be blank")
+      return
+    end
 
     # For User model, check against rec.id
     # For other models (like UserNameChangeRequest), check against the user_id option
@@ -26,5 +37,17 @@ class UserNameValidator < ActiveModel::EachValidator
     rec.errors.add(attr, "cannot begin or end with an underscore") if name =~ /\A_|_\z/
     rec.errors.add(attr, "cannot consist of numbers only") if name =~ /\A[0-9]+\z/
     rec.errors.add(attr, "cannot be one of the reserved words") if %w[me home settings].include?(name.downcase)
+
+    reserved_staff_matches = RESERVED_STAFF_NAMES.select { |reserved| name.downcase.include?(reserved) }
+    if reserved_staff_matches.any?
+      staff_exempt =
+        if rec.is_a?(User)
+          rec.level.to_i >= UserLevel::STAFF
+        else
+          user = User.find_by(id: options[:user_id]&.call(rec))
+          user.present? && user.level >= UserLevel::STAFF
+        end
+      rec.errors.add(attr, "cannot contain \"#{reserved_staff_matches.join(', ')}\"") unless staff_exempt
+    end
   end
 end
