@@ -37,7 +37,7 @@ export default class PostCache {
     }
 
     const rating = data.rating || "";
-    if (rating !== "s" && rating !== "q" && rating !== "e") return null;
+    if (rating !== "g" && rating !== "m" && rating !== "u") return null;
 
     const value: CachedPostData = {
       tag_string: tag_string,
@@ -98,7 +98,7 @@ export default class PostCache {
     }
 
     const rating = data.rating || "";
-    if (rating !== "s" && rating !== "q" && rating !== "e") return null;
+    if (rating !== "g" && rating !== "m" && rating !== "u") return null;
 
     const value: CachedPostData = {
       tag_string: tag_string,
@@ -261,7 +261,7 @@ export class CachedPost implements CachedPostData {
 
   public id: number;
   public flags: string[];
-  public rating: "s" | "q" | "e";
+  public rating: "g" | "m" | "u";
   public file_ext: string;
 
   public width: number;
@@ -322,9 +322,9 @@ export class CachedPost implements CachedPostData {
 
   public get ratingLong () {
     switch (this.rating) {
-      case "s": return "safe";
-      case "q": return "questionable";
-      case "e": return "explicit";
+      case "g": return "general";
+      case "m": return "mature";
+      case "u": return "unrated";
       default: return "unknown";
     }
   }
@@ -340,7 +340,7 @@ export class CachedPost implements CachedPostData {
 interface BasicPostData {
   id: number,
 
-  rating: "s" | "q" | "e",
+  rating: "g" | "m" | "u",
 
   width: number,
   height: number,

@@ -25,12 +25,12 @@ RSpec.describe ElasticPostQueryBuilder do
     end
 
     describe "rating" do
-      it "adds a term clause for rating:s" do
-        expect(build_query("rating:s").must).to include({ term: { rating: "s" } })
+      it "adds a term clause for rating:g" do
+        expect(build_query("rating:g").must).to include({ term: { rating: "g" } })
       end
 
-      it "adds a must_not term clause for -rating:s" do
-        expect(build_query("-rating:s").must_not).to include({ term: { rating: "s" } })
+      it "adds a must_not term clause for -rating:g" do
+        expect(build_query("-rating:g").must_not).to include({ term: { rating: "g" } })
       end
     end
 

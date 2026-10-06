@@ -3,7 +3,7 @@
 FactoryBot.define do
   factory :upload do
     association      :uploader, factory: :user
-    rating           { "s" }
+    rating           { "g" }
     status           { "pending" }
     source           { "" }
     tag_string       { "" }

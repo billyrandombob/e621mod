@@ -11,38 +11,38 @@ RSpec.describe PostQueryBuilder do
 
   describe "rating: metatag" do
     describe "rating:s" do
-      it "includes safe-rated posts" do
-        post = create(:post, rating: "s")
-        expect(run("rating:s")).to include(post)
+      it "includes general-rated posts" do
+        post = create(:post, rating: "g")
+        expect(run("rating:g")).to include(post)
       end
 
-      it "excludes explicitly-rated posts" do
-        post = create(:post, rating: "e")
-        expect(run("rating:s")).not_to include(post)
+      it "excludes unrated-rated posts" do
+        post = create(:post, rating: "u")
+        expect(run("rating:g")).not_to include(post)
       end
     end
 
     describe "rating:e" do
-      it "includes explicitly-rated posts" do
-        post = create(:post, rating: "e")
-        expect(run("rating:e")).to include(post)
+      it "includes unrated-rated posts" do
+        post = create(:post, rating: "u")
+        expect(run("rating:u")).to include(post)
       end
 
-      it "excludes safe-rated posts" do
-        post = create(:post, rating: "s")
-        expect(run("rating:e")).not_to include(post)
+      it "excludes general-rated posts" do
+        post = create(:post, rating: "g")
+        expect(run("rating:u")).not_to include(post)
       end
     end
 
     describe "rating:q" do
-      it "includes questionably-rated posts" do
-        post = create(:post, rating: "q")
-        expect(run("rating:q")).to include(post)
+      it "includes mature-rated posts" do
+        post = create(:post, rating: "m")
+        expect(run("rating:m")).to include(post)
       end
 
-      it "excludes safe-rated posts" do
-        post = create(:post, rating: "s")
-        expect(run("rating:q")).not_to include(post)
+      it "excludes general-rated posts" do
+        post = create(:post, rating: "g")
+        expect(run("rating:m")).not_to include(post)
       end
     end
 
@@ -51,15 +51,15 @@ RSpec.describe PostQueryBuilder do
     # an inclusion filter rather than an exclusion filter. Tests are commented out
     # until the bug is fixed.
     #
-    # describe "-rating:s" do
-    #   it "excludes safe-rated posts" do
-    #     post = create(:post, rating: "s")
-    #     expect(run("-rating:s")).not_to include(post)
+    # describe "-rating:g" do
+    #   it "excludes general-rated posts" do
+    #     post = create(:post, rating: "g")
+    #     expect(run("-rating:g")).not_to include(post)
     #   end
     #
-    #   it "includes explicitly-rated posts" do
-    #     post = create(:post, rating: "e")
-    #     expect(run("-rating:s")).to include(post)
+    #   it "includes unrated-rated posts" do
+    #     post = create(:post, rating: "u")
+    #     expect(run("-rating:g")).to include(post)
     #   end
     # end
   end

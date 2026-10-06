@@ -24,7 +24,7 @@ class PostRecommendationsController < ApplicationController
       mode,
       @original_post.id,
       params[:limit],
-      CurrentUser.safe_mode? ? "s" : "e",
+      CurrentUser.safe_mode? ? "g" : "u",
       Digest::SHA1.hexdigest("#{@original_post.tag_string}:#{@original_post.pool_ids.sort.join(',')}")[0, 8],
     ]
 

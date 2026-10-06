@@ -5,7 +5,7 @@ FactoryBot.define do
     # Force persistence so uploader_id is always set (needed by initialize_uploader check).
     uploader         { create(:user) }
     sequence(:md5)   { |n| Digest::MD5.hexdigest(n.to_s) }
-    rating           { "s" }
+    rating           { "g" }
     file_ext         { "jpg" }
     image_width      { 640 }
     image_height     { 480 }

@@ -65,9 +65,9 @@
 
 #advanced-search-container {
   .ssc-body.stm-toggle {
-    input[value="s"] + label { background-color: palette("background-green"); color: white; }
-    input[value="q"] + label { background-color: palette("background-yellow"); color: white; }
-    input[value="e"] + label { background-color: palette("background-red"); color: white; }
+    input[value="g"] + label { background-color: palette("background-green"); color: white; }
+    input[value="m"] + label { background-color: palette("background-yellow"); color: white; }
+    input[value="u"] + label { background-color: palette("background-red"); color: white; }
     input:not(:checked) + label { opacity: 0.5; }
 
     input[type="checkbox"]:checked + label              { border-radius: 0; }

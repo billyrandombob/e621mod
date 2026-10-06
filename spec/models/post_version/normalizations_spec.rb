@@ -7,7 +7,7 @@ RSpec.describe PostVersion do
 
   # Helper: build a second PostVersion for the same post with different attributes.
   def make_second_version(post, overrides = {})
-    create(:post_version, { post: post, tags: "foo bar", rating: "s", source: "", description: "", parent_id: nil }.merge(overrides))
+    create(:post_version, { post: post, tags: "foo bar", rating: "g", source: "", description: "", parent_id: nil }.merge(overrides))
   end
 
   # ------------------------------------------------------------------ #
@@ -104,15 +104,15 @@ RSpec.describe PostVersion do
 
       it "sets rating_changed to false when rating is unchanged" do
         post = create(:post)
-        create(:post_version, post: post, rating: "s")
-        second = create(:post_version, post: post, rating: "s")
+        create(:post_version, post: post, rating: "g")
+        second = create(:post_version, post: post, rating: "g")
         expect(second.rating_changed).to be false
       end
 
       it "sets rating_changed to true when rating differs from previous" do
         post = create(:post)
-        create(:post_version, post: post, rating: "s")
-        second = create(:post_version, post: post, rating: "e")
+        create(:post_version, post: post, rating: "g")
+        second = create(:post_version, post: post, rating: "u")
         expect(second.rating_changed).to be true
       end
 

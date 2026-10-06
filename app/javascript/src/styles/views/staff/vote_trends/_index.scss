@@ -12,13 +12,13 @@ body.c-staff-vote-trends {
     text-align: left;
 
     .rating-metatag-s {
-      color: var(--color-rating-safe);
+      color: var(--color-rating-general);
     }
     .rating-metatag-q {
-      color: var(--color-rating-questionable);
+      color: var(--color-rating-mature);
     }
     .rating-metatag-e {
-      color: var(--color-rating-explicit);
+      color: var(--color-rating-unrated);
     }
   }
 }

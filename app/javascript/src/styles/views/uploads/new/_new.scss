@@ -298,9 +298,9 @@
 
     &.active {
       background-color: themed("color-button-active");
-      &.rating-e { background-color: themed("color-rating-explicit"); }
-      &.rating-q { background-color: themed("color-rating-questionable"); }
-      &.rating-s { background-color: themed("color-rating-safe"); }
+      &.rating-e { background-color: themed("color-rating-unrated"); }
+      &.rating-q { background-color: themed("color-rating-mature"); }
+      &.rating-s { background-color: themed("color-rating-general"); }
     }
   }
 }

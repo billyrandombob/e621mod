@@ -78,7 +78,7 @@ RSpec.describe VoteTrends do
     it "includes uploader and rating keys when present" do
       uploader_user = create(:user)
       tag = create(:tag, name: "known_tag")
-      post = instance_double(Post, tag_array: ["known_tag"], uploader_id: uploader_user.id, rating: "s", score: 1, up_score: 1, down_score: 0, tag_count: 1)
+      post = instance_double(Post, tag_array: ["known_tag"], uploader_id: uploader_user.id, rating: "g", score: 1, up_score: 1, down_score: 0, tag_count: 1)
       vote = instance_double(PostVote, post: post, score: 1, updated_at: Time.current)
 
       post_votes_relation = instance_double(ActiveRecord::Relation)
@@ -87,7 +87,7 @@ RSpec.describe VoteTrends do
 
       result = described_class.vote_abuse_patterns(user: user)
 
-      expect(result.map { |trend_tag, _| trend_tag.name }).to include("known_tag", "uploader:#{uploader_user.name}", "rating:s")
+      expect(result.map { |trend_tag, _| trend_tag.name }).to include("known_tag", "uploader:#{uploader_user.name}", "rating:g")
       expect(result.map { |trend_tag, _| trend_tag.post_count }).to include(tag.post_count)
     end
 

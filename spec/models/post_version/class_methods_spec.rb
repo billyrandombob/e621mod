@@ -41,9 +41,9 @@ RSpec.describe PostVersion do
     end
 
     it "copies the post rating onto the new version" do
-      post = create(:post, rating: "e")
+      post = create(:post, rating: "u")
       pv   = PostVersion.queue(post)
-      expect(pv.rating).to eq("e")
+      expect(pv.rating).to eq("u")
     end
 
     it "copies the post source onto the new version" do

@@ -9,28 +9,28 @@ RSpec.describe TagQuery do
   include_context "as member"
 
   describe "rating: metatag" do
-    it "stores 's' for rating:s" do
-      expect(TagQuery.new("rating:s")[:rating]).to include("s")
+    it "stores 'g' for rating:g" do
+      expect(TagQuery.new("rating:g")[:rating]).to include("g")
     end
 
-    it "stores 'q' for rating:q" do
-      expect(TagQuery.new("rating:q")[:rating]).to include("q")
+    it "stores 'm' for rating:m" do
+      expect(TagQuery.new("rating:m")[:rating]).to include("m")
     end
 
-    it "stores 'e' for rating:e" do
-      expect(TagQuery.new("rating:e")[:rating]).to include("e")
+    it "stores 'u' for rating:u" do
+      expect(TagQuery.new("rating:u")[:rating]).to include("u")
     end
 
-    it "only checks the first character (rating:safe → 's')" do
-      expect(TagQuery.new("rating:safe")[:rating]).to include("s")
+    it "only checks the first character (rating:general → 'g')" do
+      expect(TagQuery.new("rating:general")[:rating]).to include("g")
     end
 
     it "stores a negated rating in rating_must_not" do
-      expect(TagQuery.new("-rating:e")[:rating_must_not]).to include("e")
+      expect(TagQuery.new("-rating:u")[:rating_must_not]).to include("u")
     end
 
     it "stores a should rating in rating_should" do
-      expect(TagQuery.new("~rating:s")[:rating_should]).to include("s")
+      expect(TagQuery.new("~rating:g")[:rating_should]).to include("g")
     end
 
     it "ignores an unrecognised rating value" do

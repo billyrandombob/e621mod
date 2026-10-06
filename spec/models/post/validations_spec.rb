@@ -30,7 +30,7 @@ RSpec.describe Post do
     end
 
     describe "rating" do
-      %w[s q e].each do |valid_rating|
+      %w[g m u].each do |valid_rating|
         it "is valid with rating '#{valid_rating}'" do
           expect(build(:post, rating: valid_rating)).to be_valid
         end
@@ -94,7 +94,7 @@ RSpec.describe Post do
         post.reload
 
         # Changing an unrelated attribute must not trigger the description length check
-        post.rating = "q"
+        post.rating = "m"
         expect(post).to be_valid
       end
     end
@@ -117,21 +117,21 @@ RSpec.describe Post do
 
     describe "updater_can_change_rating" do
       it "is invalid when rating changes on a rating-locked post" do
-        post = create(:rating_locked_post, rating: "s")
-        post.rating = "e"
+        post = create(:rating_locked_post, rating: "g")
+        post.rating = "u"
         expect(post).not_to be_valid
         expect(post.errors[:rating]).to be_present
       end
 
       it "is valid when the rating lock is being set and rating changes in the same update" do
-        post = create(:post, rating: "s", is_rating_locked: false)
-        post.assign_attributes(rating: "e", is_rating_locked: true)
+        post = create(:post, rating: "g", is_rating_locked: false)
+        post.assign_attributes(rating: "u", is_rating_locked: true)
         expect(post).to be_valid
       end
 
       it "is valid when rating is unchanged on a locked post" do
-        post = create(:rating_locked_post, rating: "s")
-        post.rating = "s"
+        post = create(:rating_locked_post, rating: "g")
+        post.rating = "g"
         expect(post).to be_valid
       end
     end

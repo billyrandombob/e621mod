@@ -24,16 +24,16 @@ RSpec.describe Upload do
         expect(upload.errors[:rating]).to be_present
       end
 
-      it "is valid with rating 's'" do
-        expect(build(:upload, rating: "s")).to be_valid
+      it "is valid with rating 'g'" do
+        expect(build(:upload, rating: "g")).to be_valid
       end
 
-      it "is valid with rating 'e'" do
-        expect(build(:upload, rating: "e")).to be_valid
+      it "is valid with rating 'u'" do
+        expect(build(:upload, rating: "u")).to be_valid
       end
 
-      it "is valid with rating 'q'" do
-        expect(build(:upload, rating: "q")).to be_valid
+      it "is valid with rating 'm'" do
+        expect(build(:upload, rating: "m")).to be_valid
       end
     end
 

@@ -26,11 +26,11 @@ RSpec.describe Post do
         expect(post_count).to be_a(Integer)
       end
 
-      it "restricts to safe-rated posts when safe_mode is enabled" do
-        safe_post = create(:post, rating: "s")
-        create(:post, rating: "e")
+      it "restricts to general-rated posts when safe_mode is enabled" do
+        safe_post = create(:post, rating: "g")
+        create(:post, rating: "u")
         tag = safe_post.tag_array.first
-        Cache.delete("pfc:#{TagQuery.normalize("#{tag} rating:s")}")
+        Cache.delete("pfc:#{TagQuery.normalize("#{tag} rating:g")}")
         count = Post.fast_count(tag, enable_safe_mode: true)
         expect(count).to be_a(Integer)
       end

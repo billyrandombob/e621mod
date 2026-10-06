@@ -112,7 +112,7 @@ RSpec.describe UploadService::Utils do
         end
       end
       let(:upload) do
-        build(:upload, uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "s", tag_string: "tagme")
+        build(:upload, uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "g", tag_string: "tagme")
       end
 
       after do
@@ -153,7 +153,7 @@ RSpec.describe UploadService::Utils do
     end
 
     context "automatic_tags integration" do
-      let(:upload) { build(:upload, uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "s", tag_string: "") }
+      let(:upload) { build(:upload, uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "g", tag_string: "") }
 
       def fixture_tempfile(name, ext)
         Tempfile.new([name, ".#{ext}"]).tap do |f|
@@ -213,7 +213,7 @@ RSpec.describe UploadService::Utils do
       end
       md5 = "a004e4122d722460b333d086f432f2eb"
       create(:post, md5: md5)
-      upload = build(:upload, uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "s")
+      upload = build(:upload, uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "g")
       expect { described_class.process_file(upload, file) }.to raise_error(ActiveRecord::RecordInvalid)
     ensure
       file&.close!

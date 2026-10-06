@@ -12,28 +12,28 @@ RSpec.describe Upload do
     # before_validation :assign_rating_from_tags
     # -------------------------------------------------------------------------
     describe "before_validation :assign_rating_from_tags" do
-      it "sets rating to 's' when tag_string contains 'rating:s'" do
-        upload = build(:upload, tag_string: "rating:s cat", rating: "e")
+      it "sets rating to 'g' when tag_string contains 'rating:g'" do
+        upload = build(:upload, tag_string: "rating:g cat", rating: "u")
         upload.valid?
-        expect(upload.rating).to eq("s")
+        expect(upload.rating).to eq("g")
       end
 
       it "uses only the first character of the rating value" do
-        upload = build(:upload, tag_string: "rating:explicit cat", rating: "s")
+        upload = build(:upload, tag_string: "rating:unrated cat", rating: "g")
         upload.valid?
-        expect(upload.rating).to eq("e")
+        expect(upload.rating).to eq("u")
       end
 
-      it "sets rating to 'q' when tag_string contains 'rating:questionable'" do
-        upload = build(:upload, tag_string: "rating:questionable", rating: "s")
+      it "sets rating to 'm' when tag_string contains 'rating:mature'" do
+        upload = build(:upload, tag_string: "rating:mature", rating: "g")
         upload.valid?
-        expect(upload.rating).to eq("q")
+        expect(upload.rating).to eq("m")
       end
 
       it "leaves rating unchanged when tag_string contains no rating metatag" do
-        upload = build(:upload, tag_string: "safe_cat fluffy", rating: "e")
+        upload = build(:upload, tag_string: "safe_cat fluffy", rating: "u")
         upload.valid?
-        expect(upload.rating).to eq("e")
+        expect(upload.rating).to eq("u")
       end
     end
 

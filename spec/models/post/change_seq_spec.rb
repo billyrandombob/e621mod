@@ -32,7 +32,7 @@ RSpec.describe Post do
         col = Post.columns_hash[column.to_s]
         current = post.read_attribute(column)
 
-        return(current == "s" ? "e" : "s") if column == :rating
+        return(current == "g" ? "u" : "g") if column == :rating
         return Array(current) + [rand(1..1_000_000)] if col.array?
 
         case col.type

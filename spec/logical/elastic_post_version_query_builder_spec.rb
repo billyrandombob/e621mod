@@ -84,19 +84,19 @@ RSpec.describe ElasticPostVersionQueryBuilder do
     end
 
     it "takes the first character of the rating value, lowercased" do
-      builder = make_builder(rating: "safe")
-      expect(builder.must).to include({ term: { rating: "s" } })
+      builder = make_builder(rating: "general")
+      expect(builder.must).to include({ term: { rating: "g" } })
     end
 
     it "downcases the rating value before taking the first character" do
-      builder = make_builder(rating: "Explicit")
-      expect(builder.must).to include({ term: { rating: "e" } })
+      builder = make_builder(rating: "Unrated")
+      expect(builder.must).to include({ term: { rating: "u" } })
     end
 
     it "adds one term clause per comma-separated rating" do
-      builder = make_builder(rating: "safe,explicit")
-      expect(builder.must).to include({ term: { rating: "s" } })
-      expect(builder.must).to include({ term: { rating: "e" } })
+      builder = make_builder(rating: "general,unrated")
+      expect(builder.must).to include({ term: { rating: "g" } })
+      expect(builder.must).to include({ term: { rating: "u" } })
     end
   end
 
@@ -117,8 +117,8 @@ RSpec.describe ElasticPostVersionQueryBuilder do
     end
 
     it "adds both a rating term and rating_changed:true for a specific value" do
-      builder = make_builder(rating_changed: "s")
-      expect(builder.must).to include({ term: { rating: "s" } })
+      builder = make_builder(rating_changed: "g")
+      expect(builder.must).to include({ term: { rating: "g" } })
       expect(builder.must).to include({ term: { rating_changed: true } })
     end
   end

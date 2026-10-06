@@ -34,7 +34,7 @@ RSpec.describe PostVersion do
     end
 
     it "does not change description when description_changed is false" do
-      post, v2 = setup_two_versions({ description: "original" }, { rating: "e" })
+      post, v2 = setup_two_versions({ description: "original" }, { rating: "u" })
       # rating_changed forces a new version; description is unchanged
       v2.undo
       expect(post.description).to eq("original")
@@ -43,16 +43,16 @@ RSpec.describe PostVersion do
     # ---- rating ----------------------------------------------------- #
 
     it "restores rating to the previous value when rating_changed" do
-      post, v2 = setup_two_versions({ rating: "s" }, { rating: "e" })
+      post, v2 = setup_two_versions({ rating: "g" }, { rating: "u" })
       v2.undo
-      expect(post.rating).to eq("s")
+      expect(post.rating).to eq("g")
     end
 
     it "does not change rating when the post is rating-locked" do
-      post, v2 = setup_two_versions({ rating: "s" }, { rating: "e" })
+      post, v2 = setup_two_versions({ rating: "g" }, { rating: "u" })
       post.update_columns(is_rating_locked: true)
       v2.undo
-      expect(post.rating).to eq("e") # unchanged — rating lock prevents revert
+      expect(post.rating).to eq("u") # unchanged — rating lock prevents revert
     end
 
     # ---- parent_id -------------------------------------------------- #
@@ -110,7 +110,7 @@ RSpec.describe PostVersion do
     # ---- edit_reason ------------------------------------------------ #
 
     it "sets post.edit_reason to 'Undo of version N'" do
-      post, v2 = setup_two_versions({ rating: "s" }, { rating: "e" })
+      post, v2 = setup_two_versions({ rating: "g" }, { rating: "u" })
       v2.undo
       expect(post.edit_reason).to eq("Undo of version #{v2.version}")
     end
@@ -122,13 +122,13 @@ RSpec.describe PostVersion do
 
   describe "#undo!" do
     it "persists the reverted attributes to the database" do
-      post, v2 = setup_two_versions({ rating: "s" }, { rating: "e" })
+      post, v2 = setup_two_versions({ rating: "g" }, { rating: "u" })
       v2.undo!
-      expect(post.reload.rating).to eq("s")
+      expect(post.reload.rating).to eq("g")
     end
 
     it "creates a new PostVersion record for the undo edit" do
-      _post, v2 = setup_two_versions({ rating: "s" }, { rating: "e" })
+      _post, v2 = setup_two_versions({ rating: "g" }, { rating: "u" })
       expect { v2.undo! }.to change(PostVersion, :count).by(1)
     end
   end

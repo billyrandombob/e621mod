@@ -12,18 +12,18 @@ RSpec.describe ElasticPostQueryBuilder do
   describe "safe mode" do
     it "adds a rating:s must clause when enable_safe_mode is true" do
       builder = build_query("", enable_safe_mode: true)
-      expect(builder.must).to include({ term: { rating: "s" } })
+      expect(builder.must).to include({ term: { rating: "g" } })
     end
 
     it "does not add a rating clause when enable_safe_mode is false" do
       builder = build_query("", enable_safe_mode: false)
-      expect(builder.must).not_to include({ term: { rating: "s" } })
+      expect(builder.must).not_to include({ term: { rating: "g" } })
     end
 
     it "infers safe mode from CurrentUser.safe_mode?" do
       allow(CurrentUser).to receive(:safe_mode?).and_return(true)
       builder = ElasticPostQueryBuilder.new("", resolve_aliases: false)
-      expect(builder.must).to include({ term: { rating: "s" } })
+      expect(builder.must).to include({ term: { rating: "g" } })
     end
   end
 end

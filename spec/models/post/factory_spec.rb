@@ -25,8 +25,8 @@ RSpec.describe Post do
       expect(a.md5).not_to eq(b.md5)
     end
 
-    it "sets a default safe rating" do
-      expect(create(:post).rating).to eq("s")
+    it "sets a default general rating" do
+      expect(create(:post).rating).to eq("g")
     end
 
     it "sets file attributes" do

@@ -68,13 +68,13 @@ RSpec.describe Upload do
     # rating (exact match)
     # -------------------------------------------------------------------------
     describe "rating parameter" do
-      let!(:explicit)     { make_upload(rating: "e") }
-      let!(:safe)         { make_upload(rating: "s") }
+      let!(:unrated)     { make_upload(rating: "u") }
+      let!(:general)         { make_upload(rating: "g") }
 
       it "returns only uploads with the given rating" do
-        results = Upload.search(rating: "e")
-        expect(results).to include(explicit)
-        expect(results).not_to include(safe)
+        results = Upload.search(rating: "u")
+        expect(results).to include(unrated)
+        expect(results).not_to include(general)
       end
     end
 

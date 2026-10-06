@@ -127,8 +127,8 @@ RSpec.describe PostVersion do
     it "returns a space-joined string of obsolete removed tags" do
       post = create(:post)
       v1   = post.versions.first
-      v1.update_columns(tags: "alpha comeback", rating: "s")
-      v2 = create(:post_version, post: post, tags: "alpha", rating: "s")
+      v1.update_columns(tags: "alpha comeback", rating: "g")
+      v2 = create(:post_version, post: post, tags: "alpha", rating: "g")
       # 'comeback' is back on the current post state; reload clears memoized @tag_array
       post.update_columns(tag_string: "alpha comeback")
       post.reload

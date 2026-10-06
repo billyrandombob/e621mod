@@ -88,7 +88,7 @@ class SitemapGeneratorJob < ApplicationJob
               duration: post.duration,
               tags: post.tag_array,
               publication_date: post.created_at,
-              family_friendly: post.rating == "s",
+              family_friendly: post.rating == "g",
             }]
           else
             add "/posts/#{post.id}", lastmod: post.updated_at, images: [{

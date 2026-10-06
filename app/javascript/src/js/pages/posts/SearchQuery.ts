@@ -42,22 +42,22 @@ export const ORDER_VALUES: Record<string, { label: string; icon: string; flat?: 
 const SUPPORTED_ORDER_VALUES: string[] = Object.entries(ORDER_VALUES)
   .flatMap(([key, val]) => (val.flat ? [key] : [key, key + "_asc"]));
 
-export const RATINGS = ["s", "q", "e"];
+export const RATINGS = ["g", "m", "u"];
 const RATING_ALL = RATINGS.join("");
 
 /**
  * Maps a sorted concatenation of active rating letters to the corresponding query metatag.
  * An empty string means all ratings are active (no metatag needed).
- * e.g. active ratings ["s", "q"] → key "sq" → "-rating:e"
+ * e.g. active ratings ["g", "m"] → key "gm" → "-rating:e"
  */
 export const RATING_TOKEN: Record<string, string> = {
-  sqe: "",
-  sq: "-rating:e",
-  qe: "-rating:s",
-  se: "-rating:q",
-  s: "rating:s",
-  q: "rating:q",
-  e: "rating:e",
+  gmu: "",
+  gm: "-rating:u",
+  mu: "-rating:g",
+  gu: "-rating:m",
+  g: "rating:g",
+  m: "rating:m",
+  u: "rating:u",
 };
 
 interface Token {

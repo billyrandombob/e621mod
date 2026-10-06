@@ -517,27 +517,27 @@ RSpec.describe "OIDC endpoints" do
       response.parsed_body["picture"]
     end
 
-    it "returns the picture when the avatar post is safe-rated" do
-      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "s") }
+    it "returns the picture when the avatar post is general-rated" do
+      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "g") }
       user = create(:user, avatar_id: avatar_post.id, enable_safe_mode: true)
       expect(picture_for(user)).to be_present
     end
 
-    it "suppresses the picture when the avatar post is explicit-rated and user has safe mode on" do
-      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "e") }
+    it "suppresses the picture when the avatar post is unrated-rated and user has safe mode on" do
+      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "u") }
       user = create(:user, avatar_id: avatar_post.id, enable_safe_mode: true)
       expect(picture_for(user)).to be_nil
     end
 
-    it "suppresses the picture when the avatar post is questionable-rated and site safe mode is on" do
-      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "q") }
+    it "suppresses the picture when the avatar post is mature-rated and site safe mode is on" do
+      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "m") }
       user = create(:user, avatar_id: avatar_post.id)
       allow(Danbooru.config.custom_configuration).to receive(:safe_mode?).and_return(true)
       expect(picture_for(user)).to be_nil
     end
 
     it "returns the picture when safe mode is off regardless of rating" do
-      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "e") }
+      avatar_post = CurrentUser.scoped(create(:user)) { create(:post, rating: "u") }
       user = create(:user, avatar_id: avatar_post.id)
       expect(picture_for(user)).to be_present
     end

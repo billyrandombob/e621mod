@@ -13,7 +13,7 @@ RSpec.describe Post do
 
       it "creates an additional PostVersion when watched attributes change" do
         post = create(:post)
-        expect { post.update!(rating: "e") }.to change(PostVersion, :count).by(1)
+        expect { post.update!(rating: "u") }.to change(PostVersion, :count).by(1)
       end
 
       it "does not create a PostVersion when only unwatched attributes change" do
@@ -31,8 +31,8 @@ RSpec.describe Post do
 
     describe "#saved_change_to_watched_attributes?" do
       it "returns true after a rating change" do
-        post = create(:post, rating: "s")
-        post.update!(rating: "e")
+        post = create(:post, rating: "g")
+        post.update!(rating: "u")
         expect(post.saved_change_to_watched_attributes?).to be true
       end
 
@@ -84,23 +84,23 @@ RSpec.describe Post do
       end
 
       it "restores rating from the target version" do
-        post = create(:post, rating: "s")
-        post.update!(rating: "e")
+        post = create(:post, rating: "g")
+        post.update!(rating: "u")
         old_version = post.versions.first
 
         post.revert_to(old_version)
-        expect(post.rating).to eq("s")
+        expect(post.rating).to eq("g")
       end
     end
 
     describe "#revert_to!" do
       it "persists the revert" do
-        post = create(:post, rating: "s")
-        post.update!(rating: "e")
+        post = create(:post, rating: "g")
+        post.update!(rating: "u")
         old_version = post.versions.first
 
         post.revert_to!(old_version)
-        expect(post.reload.rating).to eq("s")
+        expect(post.reload.rating).to eq("g")
       end
     end
   end

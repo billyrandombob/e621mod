@@ -163,10 +163,10 @@ RSpec.describe Post do
 
     describe "pre-metatag processing" do
       describe "rating: metatag" do
-        it "changes the post rating when 'rating:q' is in the tag_string" do
-          post = create(:post, rating: "s")
-          post.update!(tag_string: "#{post.tag_string} rating:q")
-          expect(post.reload.rating).to eq("q")
+        it "changes the post rating when 'rating:m' is in the tag_string" do
+          post = create(:post, rating: "g")
+          post.update!(tag_string: "#{post.tag_string} rating:m")
+          expect(post.reload.rating).to eq("m")
         end
       end
 
@@ -304,15 +304,15 @@ RSpec.describe Post do
 
       describe "when old_rating matches submitted rating (user did not intend to change it)" do
         it "reverts rating to the database value" do
-          post = create(:post, rating: "s")
-          post.update_columns(rating: "q")
+          post = create(:post, rating: "g")
+          post.update_columns(rating: "m")
           post.reload
 
-          post.old_rating = "s"
-          post.rating = "s"
+          post.old_rating = "g"
+          post.rating = "g"
           post.save!
 
-          expect(post.reload.rating).to eq("q")
+          expect(post.reload.rating).to eq("m")
         end
       end
 

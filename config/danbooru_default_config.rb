@@ -720,7 +720,7 @@ You can see a list of your deleted posts \"here\":[/deleted_posts?user_id=%UPLOA
     end
 
     def user_needs_login_for_post?(post)
-      return true if post.tag_array.include?("young") && post.rating != "s"
+      return true if post.tag_array.include?("young") && post.rating != "g"
       false
     end
 

@@ -58,16 +58,16 @@ RSpec.describe PostThumbnailComponent, type: :component do
       expect(component(post).send(:preview_classes)).not_to include("has-children")
     end
 
-    it "includes 'rating-safe' for a safe-rated post" do
-      expect(component(create(:post, rating: "s")).send(:preview_classes)).to include("rating-safe")
+    it "includes 'rating-general' for a general-rated post" do
+      expect(component(create(:post, rating: "g")).send(:preview_classes)).to include("rating-general")
     end
 
-    it "includes 'rating-questionable' for a questionable-rated post" do
-      expect(component(create(:post, rating: "q")).send(:preview_classes)).to include("rating-questionable")
+    it "includes 'rating-mature' for a mature-rated post" do
+      expect(component(create(:post, rating: "m")).send(:preview_classes)).to include("rating-mature")
     end
 
-    it "includes 'rating-explicit' for an explicit-rated post" do
-      expect(component(create(:post, rating: "e")).send(:preview_classes)).to include("rating-explicit")
+    it "includes 'rating-unrated' for an unrated-rated post" do
+      expect(component(create(:post, rating: "u")).send(:preview_classes)).to include("rating-unrated")
     end
 
     it "includes 'blacklistable' by default" do

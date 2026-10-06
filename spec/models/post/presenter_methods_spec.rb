@@ -7,16 +7,16 @@ RSpec.describe Post do
 
   describe "PresenterMethods" do
     describe "#pretty_rating" do
-      it "returns 'Safe' for rating s" do
-        expect(create(:post, rating: "s").pretty_rating).to eq("Safe")
+      it "returns 'General' for rating g" do
+        expect(create(:post, rating: "g").pretty_rating).to eq("General")
       end
 
-      it "returns 'Questionable' for rating q" do
-        expect(create(:post, rating: "q").pretty_rating).to eq("Questionable")
+      it "returns 'Mature' for rating m" do
+        expect(create(:post, rating: "m").pretty_rating).to eq("Mature")
       end
 
-      it "returns 'Explicit' for rating e" do
-        expect(create(:post, rating: "e").pretty_rating).to eq("Explicit")
+      it "returns 'Unrated' for rating u" do
+        expect(create(:post, rating: "u").pretty_rating).to eq("Unrated")
       end
     end
 

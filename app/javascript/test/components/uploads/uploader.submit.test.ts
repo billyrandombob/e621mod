@@ -4,9 +4,9 @@ vi.mock("@/components/autocomplete", () => ({ default: { initialize_autocomplete
 vi.mock("@/components/DTextFormatter", () => ({ default: vi.fn() }));
 vi.mock("@/utility/Toast", () => ({ default: { notice: vi.fn(), alert: vi.fn() } }));
 
+import { flushPromises, VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { nextTick } from "vue";
-import { flushPromises, VueWrapper } from "@vue/test-utils";
 import { htmlResponse, jsonResponse } from "../../helpers";
 import { mountUploader, MountUploaderOptions, unmountAll } from "./mountUploader";
 
@@ -104,7 +104,7 @@ describe("uploads/uploader — submit payload", () => {
 
     const data = mounted.fetchSpy.mock.calls.at(-1)![1].body as FormData;
     expect(data.get("upload[tag_string]")).toBe("a b c d");
-    expect(data.get("upload[rating]")).toBe("e");
+    expect(data.get("upload[rating]")).toBe("u");
     expect(data.get("upload[source]")).toBe("https://example.com/a\nhttps://example.com/b");
     expect(data.get("upload[description]")).toBe("a description");
     expect(data.get("upload[parent_id]")).toBe("12345");

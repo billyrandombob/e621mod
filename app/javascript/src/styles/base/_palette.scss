@@ -7,15 +7,10 @@
 // Palette definitions
 $palette: (
   "background-red": #bb261f,
-  "background-yellow": #827428,
-  "background-green": #227d2a,
-  "background-grey": #60686f,
-  "background-blue": #2196f3,
   "background-purple": #9504ce,
   "background-pink": #ff69b4,
 
-  "background-gold": #ddc676,
-  "background-orange": #ec8e49,
+ 
 
   "background-red-d5": #{color.adjust(#76312e, $lightness: -5%)},
   "background-red-d10": #{color.adjust(#76312e, $lightness: -10%)},

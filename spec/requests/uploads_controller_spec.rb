@@ -175,7 +175,7 @@ RSpec.describe UploadsController do
       )
     end
     let(:service_double) { instance_spy(UploadService, start!: upload_double, warnings: []) }
-    let(:base_params) { { upload: { source: "https://example.com/image.jpg", tag_string: "tagme", rating: "s" } } }
+    let(:base_params) { { upload: { source: "https://example.com/image.jpg", tag_string: "tagme", rating: "g" } } }
 
     before { allow(UploadService).to receive(:new).and_return(service_double) }
 
@@ -340,7 +340,7 @@ RSpec.describe UploadsController do
 
     it "returns 403 for POST /uploads even for a member" do
       sign_in_as member
-      post uploads_path(format: :json), params: { upload: { rating: "s" } }
+      post uploads_path(format: :json), params: { upload: { rating: "g" } }
       expect(response).to have_http_status(:forbidden)
     end
 

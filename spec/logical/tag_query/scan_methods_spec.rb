@@ -113,8 +113,8 @@ RSpec.describe TagQuery, type: :model do
     end
 
     it "collects multiple values for a repeated metatag" do
-      result = TagQuery.fetch_metatags("rating:s rating:e", "rating")
-      expect(result["rating"]).to include("s", "e")
+      result = TagQuery.fetch_metatags("rating:g rating:u", "rating")
+      expect(result["rating"]).to include("g", "u")
     end
 
     it "returns an empty hash for a blank query" do

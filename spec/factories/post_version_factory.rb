@@ -4,7 +4,7 @@ FactoryBot.define do
   factory :post_version do
     association :post
     tags        { "tagme" }
-    rating      { "s" }
+    rating      { "g" }
     source      { "" }
     description { "" }
     locked_tags { "" }

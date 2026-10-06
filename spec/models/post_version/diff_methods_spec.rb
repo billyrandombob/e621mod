@@ -11,15 +11,15 @@ RSpec.describe PostVersion do
 
   describe "#parent_rating_tags" do
     it "returns just the rating tag when parent_id is nil" do
-      pv = build(:post_version, rating: "s")
+      pv = build(:post_version, rating: "g")
       pv.parent_id = nil
-      expect(pv.parent_rating_tags(pv)).to eq(%w[rating:s])
+      expect(pv.parent_rating_tags(pv)).to eq(%w[rating:g])
     end
 
     it "returns rating and parent tags when parent_id is present" do
-      pv = build(:post_version, rating: "e")
+      pv = build(:post_version, rating: "u")
       pv.parent_id = 42
-      expect(pv.parent_rating_tags(pv)).to eq(%w[rating:e parent:42])
+      expect(pv.parent_rating_tags(pv)).to eq(%w[rating:u parent:42])
     end
   end
 
@@ -111,8 +111,8 @@ RSpec.describe PostVersion do
       # v1: alpha; v2 added 'temporary'; post no longer has 'temporary' now
       post = create(:post)
       v1 = post.versions.first
-      v1.update_columns(tags: "alpha", rating: "s")
-      v2 = create(:post_version, post: post, tags: "alpha temporary", rating: "s")
+      v1.update_columns(tags: "alpha", rating: "g")
+      v2 = create(:post_version, post: post, tags: "alpha temporary", rating: "g")
       # Strip 'temporary' from the current post state so the added tag is obsolete
       post.update_columns(tag_string: "alpha")
       result = v2.diff(v1)
@@ -123,8 +123,8 @@ RSpec.describe PostVersion do
       # v1: alpha comeback; v2 removed 'comeback'; post has 'comeback' again now
       post = create(:post)
       v1 = post.versions.first
-      v1.update_columns(tags: "alpha comeback", rating: "s")
-      v2 = create(:post_version, post: post, tags: "alpha", rating: "s")
+      v1.update_columns(tags: "alpha comeback", rating: "g")
+      v2 = create(:post_version, post: post, tags: "alpha", rating: "g")
       # Ensure 'comeback' is back on the current post; reload clears memoized @tag_array
       post.update_columns(tag_string: "alpha comeback")
       post.reload
@@ -166,21 +166,21 @@ RSpec.describe PostVersion do
 
     it "appends rating:<value> to added_tags when rating_changed is true" do
       post = create(:post)
-      v2 = create(:post_version, post: post, rating: "e")
+      v2 = create(:post_version, post: post, rating: "u")
       # v2 has a different rating than v1, so rating_changed should be true
       v2.update_columns(rating_changed: true)
       v2.instance_variable_set(:@changes, nil) if v2.instance_variable_defined?(:@changes)
-      expect(v2.changes[:added_tags]).to include("rating:e")
+      expect(v2.changes[:added_tags]).to include("rating:u")
     end
 
     it "appends rating of previous to removed_tags when rating_changed and there is a previous version" do
       post = create(:post)
       v1 = post.versions.first
-      v1.update_columns(rating: "s")
-      v2 = create(:post_version, post: post, rating: "e")
+      v1.update_columns(rating: "g")
+      v2 = create(:post_version, post: post, rating: "u")
       v2.update_columns(rating_changed: true)
       v2.instance_variable_set(:@changes, nil) if v2.instance_variable_defined?(:@changes)
-      expect(v2.changes[:removed_tags]).to include("rating:s")
+      expect(v2.changes[:removed_tags]).to include("rating:g")
     end
 
     it "appends parent:<id> to added_tags when parent_changed and parent_id is present" do

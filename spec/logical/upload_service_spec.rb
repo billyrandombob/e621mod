@@ -25,11 +25,11 @@ RSpec.describe UploadService do
 
   describe "#initialize" do
     it "stores params without creating an Upload" do
-      expect { described_class.new(rating: "s") }.not_to change(Upload, :count)
+      expect { described_class.new(rating: "g") }.not_to change(Upload, :count)
     end
 
     it "exposes params via #params" do
-      service = described_class.new(rating: "s", tag_string: "foo")
+      service = described_class.new(rating: "g", tag_string: "foo")
       expect(service.params[:tag_string]).to eq("foo")
     end
   end
@@ -47,7 +47,7 @@ RSpec.describe UploadService do
           f.rewind
         end
       end
-      let(:params)  { { uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "s", file: file } }
+      let(:params)  { { uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "g", file: file } }
       let(:service) { described_class.new(params) }
 
       after do
@@ -113,7 +113,7 @@ RSpec.describe UploadService do
 
     context "when Utils.process_file raises" do
       let(:file)    { instance_spy(Tempfile, path: file_fixture("sample.jpg").to_s) }
-      let(:params)  { { uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "s", file: file } }
+      let(:params)  { { uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "g", file: file } }
       let(:service) { described_class.new(params) }
 
       before do
@@ -139,7 +139,7 @@ RSpec.describe UploadService do
     end
 
     context "when no file and no direct_url are provided" do
-      let(:params)  { { uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "s" } }
+      let(:params)  { { uploader: uploader, uploader_ip_addr: "127.0.0.1", rating: "g" } }
       let(:service) { described_class.new(params) }
 
       it "returns upload with an error status" do
@@ -175,7 +175,7 @@ RSpec.describe UploadService do
                  file_ext:         "jpg",
                  image_width:      640,
                  image_height:     480,
-                 rating:           "s",
+                 rating:           "g",
                  tag_string:       "tagme",
                  description:      "hello",
                  file_size:        10_000,
@@ -256,7 +256,7 @@ RSpec.describe UploadService do
                 file_ext:         "jpg",
                 image_width:      640,
                 image_height:     480,
-                rating:           "s",
+                rating:           "g",
                 tag_string:       "tagme",
                 description:      "  hello  ",
                 file_size:        10_000,
@@ -295,7 +295,7 @@ RSpec.describe UploadService do
       end
 
       it "maps rating" do
-        expect(post.rating).to eq("s")
+        expect(post.rating).to eq("g")
       end
 
       it "maps source" do

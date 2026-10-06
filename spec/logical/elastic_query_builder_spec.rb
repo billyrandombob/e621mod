@@ -41,13 +41,13 @@ RSpec.describe ElasticQueryBuilder do
     end
 
     it "includes minimum_should_match: 1 when should is non-empty" do
-      builder.should.push({ term: { rating: "s" } })
+      builder.should.push({ term: { rating: "g" } })
       result = builder.create_query_obj
       expect(result.dig(:bool, :minimum_should_match)).to eq(1)
     end
 
     it "does not include minimum_should_match when should is empty" do
-      builder.must.push({ term: { rating: "s" } })
+      builder.must.push({ term: { rating: "g" } })
       result = builder.create_query_obj
       expect(result[:bool]).not_to have_key(:minimum_should_match)
     end
@@ -55,7 +55,7 @@ RSpec.describe ElasticQueryBuilder do
     it "wraps query in function_score when @function_score is set" do
       fs = { functions: [], score_mode: "sum" }
       builder.instance_variable_set(:@function_score, fs)
-      builder.must.push({ term: { rating: "s" } })
+      builder.must.push({ term: { rating: "g" } })
       result = builder.create_query_obj
       expect(result).to have_key(:function_score)
       expect(result[:function_score]).to include(:query, :functions)
@@ -403,7 +403,7 @@ RSpec.describe ElasticQueryBuilder do
 
     it "passes a bool query when has_invalid_input is false" do
       builder = make_search_builder
-      builder.must.push({ term: { rating: "s" } })
+      builder.must.push({ term: { rating: "g" } })
       builder.search
       expect(document_store).to have_received(:search) do |body|
         expect(body[:query]).to have_key(:bool)
