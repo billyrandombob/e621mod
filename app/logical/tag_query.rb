@@ -63,19 +63,26 @@ class TagQuery
 
   # Tags with parsed values of `true` or `false`. See `TagQuery#parse_boolean` for details.
   BOOLEAN_METATAGS = %w[
-    hassource hasdescription isparent ischild inpool pending_replacements artverified
+    hassource hasdescription isparent ischild hasparent haschild haschildren inpool pending_replacements artverified
   ].freeze
+
+  BOOLEAN_METATAG_ALIASES = {
+    "hasparent"   => "ischild",
+    "haschild"    => "isparent",
+    "haschildren" => "isparent",
+  }.freeze
 
   CATEGORY_METATAG_MAP = TagCategory::SHORT_NAME_MAPPING.to_h { |k, v| [-"#{k}tags", -"tag_count_#{v}"] }.freeze
 
   NEGATABLE_METATAGS = %w[
     id filetype type rating description parent user user_id approver flagger deletedby delreason
-    source status pool set fav favoritedby note locked upvote votedup downvote voteddown voted
+    source status pool set fav favoritedby note locked
+    upvote votedup upvoted voteup downvote voteddown downvoted votedown voted vote
     width height mpixels ratio filesize duration score favcount date age change tagcount
-    commenter comm noter noteupdater
+    commenter comm noter noteupdater flagreason flagnote flaggedby
   ].concat(CATEGORY_METATAG_MAP.keys).freeze
 
-  METATAGS = %w[md5 order limit child randseed hot_from ratinglocked notelocked statuslocked].concat(
+  METATAGS = %w[md5 order limit child randseed ratinglocked notelocked statuslocked].concat(
     NEGATABLE_METATAGS, COUNT_METATAGS, BOOLEAN_METATAGS
   ).freeze
 
@@ -132,7 +139,7 @@ class TagQuery
   # NOTE: The first element (`id`) is the only one whose value is equivalent to the `_asc`-suffixed variant.
   ORDER_INVERTIBLE_ROOTS = %w[
     id score md5 favcount note mpixels filesize tagcount change duration
-    created updated comment comment_bumped aspect_ratio
+    created updated comment comment_bumped aspect_ratio deleted flagged
   ].concat(COUNT_METATAGS, CATEGORY_METATAG_MAP.keys).freeze
 
   # All possible valid values for `order` metatags; used for autocomplete.
@@ -209,7 +216,7 @@ class TagQuery
   # Therefore, these are pulled out of groups and placed on the top level of searches.
   #
   # Note that this includes all valid prefixes.
-  GLOBAL_METATAGS = %w[order -order limit randseed hot_from].freeze
+  GLOBAL_METATAGS = %w[order -order limit randseed].freeze
 
   # The values for the `status` metatag that will override the automatic hiding of deleted posts
   # from search results. Other tags do also alter this behavior; specifically, a `deletedby` or
@@ -225,9 +232,27 @@ class TagQuery
     status -status
     delreason -delreason ~delreason
     deletedby -deletedby ~deletedby
+    deleter -deleter ~deleter
+    flaggedby -flaggedby ~flaggedby
+    flagger -flagger ~flagger
+    flagnote -flagnote ~flagnote
+    flagreason -flagreason ~flagreason
+  ].freeze
+
+  OVERRIDE_DELETED_FILTER_ORDERS = %w[
+    deleted deleted_desc deleted_asc
   ].freeze
 
   STATUS_VALUES = %w[all any pending modqueue deleted flagged active].freeze
+
+  # OpenSearch rejects bool queries with more than this many clauses. A wildcard tag like `*play*`
+  # expands to many concrete tag clauses, so we enforce the limit here with a user-facing error
+  # rather than letting the search reach OpenSearch and return a cryptic 400 response.
+  OPENSEARCH_MAX_CLAUSE_COUNT = 1024
+
+  # OpenSearch limits wildcard query automaton states to ~1000. A prefix wildcard `term*` generates
+  # roughly `len(term) + 1` states, so cap the prefix at 999 characters to stay within the limit.
+  MAX_SOURCE_WILDCARD_LENGTH = 999
 
   # Used for quickly profiling optimizations, tweaking desired behavior, etc. Should be removed
   # after reviews are completed.
@@ -262,6 +287,10 @@ class TagQuery
     CATCH_INVALID_TAG: true,
     NO_NON_METATAG_UNLIMITED_TAGS: true,
   }.freeze
+
+  def self.will_count_group_tags?
+    SETTINGS[:CHECK_GROUP_TAGS_AND_DEPTH] != false
+  end
 
   delegate :[], :include?, to: :@q
   attr_reader :q, :resolve_aliases, :tag_count
@@ -302,6 +331,8 @@ class TagQuery
     else
       parse_query(query, **)
     end
+
+    q[:order] = "random" if q[:random_seed].present? && q[:order].nil?
     # raise CountExceededError if @tag_count > Danbooru.config.tag_query_limit - free_tags_count
   end
 
@@ -377,10 +408,12 @@ class TagQuery
   #
   # ### Returns
   # `false` if `always_show_deleted` or `query` contains either a `delreason`/`deletedby`
-  # metatags or a `status` metatag w/ a value in `TagQuery::OVERRIDE_DELETED_FILTER_STATUS_VALUES` at
-  # the specified depth; `true` otherwise.
+  # metatags or a `status` metatag w/ a value in `TagQuery::OVERRIDE_DELETED_FILTER_STATUS_VALUES`
+  # or a deleted order value in `TagQuery::OVERRIDE_DELETED_FILTER_ORDERS` at the specified depth;
+  # `true` otherwise.
   def self.should_hide_deleted_posts?(query, always_show_deleted: false, at_any_level: true)
     return false if always_show_deleted
+    return false if TagQuery.deleted_filter_order_override?(query, at_any_level: at_any_level)
     return query.hide_deleted_posts?(at_any_level: at_any_level) if query.is_a?(TagQuery)
     TagQuery.fetch_metatags(query, *OVERRIDE_DELETED_FILTER_METATAGS, prepend_prefix: false, at_any_level: at_any_level) do |tag, val|
       return false unless tag.delete_prefix("-") == "status" && !val.in?(OVERRIDE_DELETED_FILTER_STATUS_VALUES)
@@ -390,7 +423,19 @@ class TagQuery
 
   # Can a ` -status:deleted` be safely appended to the search without changing it's contents?
   def self.can_append_deleted_filter?(query, at_any_level: true)
-    !TagQuery.has_metatags?(query, *OVERRIDE_DELETED_FILTER_METATAGS, prepend_prefix: false, at_any_level: at_any_level, has_all: false)
+    !TagQuery.deleted_filter_order_override?(query, at_any_level: at_any_level) &&
+      !TagQuery.has_metatags?(query, *OVERRIDE_DELETED_FILTER_METATAGS, prepend_prefix: false, at_any_level: at_any_level, has_all: false)
+  end
+
+  def self.deleted_filter_order_override?(query, at_any_level: true)
+    if query.is_a?(TagQuery)
+      query[:order].in?(OVERRIDE_DELETED_FILTER_ORDERS)
+    else
+      TagQuery.fetch_metatags(query, "order", "-order", prepend_prefix: false, at_any_level: at_any_level) do |_tag, value|
+        return true if value.in?(OVERRIDE_DELETED_FILTER_ORDERS)
+      end
+      false
+    end
   end
 
   # Convert an order metatag into it's simplest consistent representation.
@@ -552,6 +597,35 @@ class TagQuery
     end
   end
 
+  # Cheap, linear guard against catastrophic backtracking in `REGEX_TOKENIZE`, whose recursive
+  # group subpattern blows up on deeply-nested group parentheses (especially unbalanced ones like
+  # `( ( ( ( a ) )`) before `Regexp.timeout` aborts the match. The `DEPTH_LIMIT` recursion guards
+  # run too late — the blowup is inside a single regex match.
+  #
+  # Walks the string once, tracking net group nesting depth, and returns `true` once it passes
+  # `DEPTH_LIMIT` so callers can reject the query before running the regex. Only genuine group
+  # delimiters count (see `REGEX_GROUP_DELIMITER`): a `(` embedded in a tag (`:(`, `foo(`) is
+  # ignored, and quoted metatags are stripped first since the tokenizer matches those atomically.
+  # A group opener (whitespace-delimited `(`, optional `-`/`~` prefix, followed by whitespace —
+  # matching the tokenizer's `\(\s+`) or a group closer (`)` preceded by whitespace).
+  REGEX_GROUP_DELIMITER = /(?<=\s|\A)[-~]?\((?=\s)|(?<=\s)\)(?=\s|\z)/
+
+  def self.group_depth_exceeded?(tag_str)
+    str = tag_str.to_s
+    # Reaching depth `DEPTH_LIMIT + 1` needs at least that many `(` + whitespace pairs.
+    return false if str.length < (DEPTH_LIMIT + 1) * 2
+    str = str.gsub(TagQuery::REGEX_ANY_QUOTED_METATAG, "") if str.include?(':"')
+    depth = 0
+    str.scan(REGEX_GROUP_DELIMITER) do |delimiter|
+      if delimiter.end_with?("(")
+        return true if (depth += 1) > DEPTH_LIMIT
+      elsif depth > 0
+        depth -= 1
+      end
+    end
+    false
+  end
+
   # Iterates through tokens, returning each tokens' `MatchData` in accordance with
   # `TagQuery::REGEX_TOKENIZE`.
   # ### Parameters
@@ -576,6 +650,13 @@ class TagQuery
       return []
     end
     tag_str = tag_str.to_s.unicode_normalize(:nfc).strip
+    # Reject pathologically-nested group parentheses before they reach `REGEX_TOKENIZE`, where
+    # they'd cause catastrophic backtracking. Only checked at the top level; sub-strings passed to
+    # recursive calls are already one level shallower.
+    if depth == 0 && TagQuery.group_depth_exceeded?(tag_str)
+      raise DepthExceededError if kwargs[:error_on_depth_exceeded]
+      return []
+    end
     results = []
     # OPTIMIZE: Candidate for early exit
     # return results if tag_str.blank?
@@ -642,6 +723,12 @@ class TagQuery
     return [] if tag_str.blank? || /\A[-~]?\(\s+\)\z/.match?(tag_str)
     # Quick and dirty optimization: If it can't contain any groups, use a simpler tokenizer.
     return TagQuery.send(kwargs[:segregate_metatags] ? :scan_light : :scan, tag_str, **kwargs) unless REGEX_HAS_GROUP.match?(tag_str)
+    # Reject pathologically-nested group parentheses before they reach `REGEX_TOKENIZE` below,
+    # where they'd cause catastrophic backtracking. Only checked at the top level; recursive calls
+    # receive sub-strings that are already one level shallower.
+    if depth == 0 && TagQuery.group_depth_exceeded?(tag_str)
+      return error_on_depth_exceeded ? (raise DepthExceededError) : []
+    end
     # If this query is composed of 1 top-level group with no modifiers, convert to ungrouped.
     # TODO: Check if regex catches nested groups & quoted metatag groups
     if SETTINGS[:EARLY_SCAN_SEARCH_CHECK] && tag_str.start_with?("(") && tag_str.end_with?(")")
@@ -985,12 +1072,12 @@ class TagQuery
       end
       last_index += curr_match.end(0)
     end
-    plus_one = nil
     # For each quoted metatag, match all the non-quoted queried metatags between the end of the last
     # quoted metatag and the start of this one, then check and process this quoted metatag.
     #
     # If there's no (more) quoted metatags, then just search each metatag between the last index and the end.
-    while (quoted_m = query[last_index...query.length].presence&.match(REGEX_ANY_QUOTED_METATAG)) || (!plus_one && (plus_one = true)) # rubocop:disable Lint/LiteralAssignmentInCondition
+    loop do
+      quoted_m = query[last_index...query.length].presence&.match(REGEX_ANY_QUOTED_METATAG)
       # If there are non-quoted matches before current quoted & current quoted doesn't match, manual
       # update of last index requires the offset quoted_m was found with.
       prior_last_index = last_index
@@ -1168,10 +1255,16 @@ class TagQuery
 
   private
 
-  METATAG_SEARCH_TYPE = Hash.new(:must).merge({
+  TAG_SEARCH_TYPE = Hash.new(:must).merge({
     "-" => :must_not,
     "~" => :should,
   }).freeze
+
+  # Returns a [tag_name, tag_type] pair such that the tag_name prefix is properly removed if present.
+  def get_tag_name_with_search_type(tag)
+    type = TagQuery::TAG_SEARCH_TYPE[tag[0]]
+    [(type == :must ? tag : tag[1..]).downcase, type]
+  end
 
   # The maximum number of nested groups allowed before either cutting off processing or triggering a
   # `TagQuery::DepthExceededError`.
@@ -1269,7 +1362,7 @@ class TagQuery
           next if group.blank?
           q[:children_show_deleted] ||= !group.hide_deleted_posts?(at_any_level: true) if kwargs[:process_groups]
           q[:groups] ||= {}
-          search_type = METATAG_SEARCH_TYPE[match[1]]
+          search_type = TAG_SEARCH_TYPE[match[1]]
           q[:groups][search_type] ||= []
           q[:groups][search_type] << group
         else
@@ -1292,7 +1385,7 @@ class TagQuery
       # Remove quotes from description:"abc def"
       g2 = g2.delete_prefix('"').delete_suffix('"')
 
-      type = METATAG_SEARCH_TYPE[metatag_name[0]]
+      type = TAG_SEARCH_TYPE[metatag_name[0]]
       # IDEA: Use jump table(s) instead
       # * Can use different table depending on value of `type` to reduce comparisons
       # * A hash has faster lookup than sequentially checking cases, and this already maps to a jump table pretty well.
@@ -1339,9 +1432,16 @@ class TagQuery
           post_set_id
         end
 
+      # NOTE: The favorite case is the only case where `user_id_or_invalid` isn't used, because it needs to check for the `hide_favorites` user setting.
+      # As a result, to avoid an extra lookup in the common case of a valid user, the logic is duplicated here instead of using `user_id_or_invalid` with an `invalid_user_id` of `-1` and then checking for that in the caller.
+      # In future permissions changes, the situation may change, either allowing for `user_id_or_invalid` to be used here or necessitating similar logic in other cases, so this should be kept in mind.
       when "fav", "-fav", "~fav", "favoritedby", "-favoritedby", "~favoritedby"
         add_to_query(type, :fav_ids) do
-          favuser = User.find_by_name_or_id(g2) # rubocop:disable Rails/DynamicFindBy
+          if g2.downcase == "me"
+            favuser = CurrentUser.user.is_logged_in? ? CurrentUser.user : nil
+          else
+            favuser = User.find_by_name_or_id(g2) # rubocop:disable Rails/DynamicFindBy
+          end
 
           next -1 unless favuser # next 0 unless favuser
           raise Favorite::HiddenError if favuser.hide_favorites?
@@ -1349,7 +1449,7 @@ class TagQuery
           favuser.id
         end
 
-      when "md5" then q[:md5] = g2.downcase.split(",")[0..99]
+      when "md5" then q[:md5] = g2.downcase.split(",").first(Danbooru.config.max_per_page)
 
       when "rating", "-rating", "~rating" then add_to_query(type, :rating, g2) if %w[g m u].include?(g2 = g2[0]&.downcase)
 
@@ -1385,13 +1485,12 @@ class TagQuery
       when "change", "-change", "~change" then add_to_query(type, :change_seq, ParseValue.range(g2))
 
       when "source", "-source", "~source"
-        add_to_query(type, :sources, g2, any_none_key: :source, wildcard: true) { "#{g2}*" }
+        truncated_source = "#{g2.first(MAX_SOURCE_WILDCARD_LENGTH)}*"
+        add_to_query(type, :sources, g2, any_none_key: :source, wildcard: true) { truncated_source }
 
       when "date", "-date", "~date" then add_to_query(type, :date, ParseValue.date_range(g2))
 
       when "age", "-age", "~age" then add_to_query(type, :age, ParseValue.invert_range(ParseValue.range(g2, :age)))
-
-      when "hot_from" then q[:hot_from] = ParseValue.date_from(g2)
 
       when "tagcount", "-tagcount", "~tagcount" then add_to_query(type, :post_tag_count, ParseValue.range(g2))
 
@@ -1404,7 +1503,9 @@ class TagQuery
 
       when "randseed" then q[:random_seed] = ParseValue.safe_id(g2)
 
-      when "order", "-order" then q[:order] = TagQuery.normalize_order_value(g2.downcase, invert: type == :must_not)
+      when "order", "-order"
+        q[:order] = TagQuery.normalize_order_value(g2.downcase, invert: type == :must_not)
+        q[:show_deleted] ||= q[:order].in?(OVERRIDE_DELETED_FILTER_ORDERS)
 
       when "limit"
         # Do nothing. The controller takes care of it.
@@ -1428,24 +1529,45 @@ class TagQuery
       when "delreason", "-delreason", "~delreason"
         q[:status] ||= "any" unless q[:status_must_not]
         q[:show_deleted] ||= true
-        add_to_query(type, :delreason, g2, wildcard: true)
+        add_to_query(type, :delreason, g2.downcase, wildcard: true)
 
-      when "deletedby", "-deletedby", "~deletedby"
+      when "deletedby", "-deletedby", "~deletedby", "deleter", "-deleter", "~deleter"
         q[:status] ||= "any" unless q[:status_must_not]
         q[:show_deleted] ||= true
         add_to_query(type, :deleter, user_id_or_invalid(g2))
 
-      when "upvote", "-upvote", "~upvote", "votedup", "-votedup", "~votedup"
+      when "flaggedby", "-flaggedby", "~flaggedby", "flagger", "-flagger", "~flagger"
+        next unless CurrentUser.is_staff?
+        add_to_query(type, :flagger, user_id_or_invalid(g2))
+
+      when "flagreason", "-flagreason", "~flagreason"
+        add_to_query(type, :flagreason, g2.downcase, wildcard: true)
+
+      when "flagnote", "-flagnote", "~flagnote"
+        next unless CurrentUser.is_staff?
+        add_to_query(type, :flagnote, g2.downcase, wildcard: true)
+
+      when "upvote", "-upvote", "~upvote",
+           "votedup", "-votedup", "~votedup",
+           "upvoted", "-upvoted", "~upvoted",
+           "voteup", "-voteup", "~voteup"
         add_to_query(type, :upvote, privileged_user_id_or_invalid(g2))
 
-      when "downvote", "-downvote", "~downvote", "voteddown", "-voteddown", "~voteddown"
+      when "downvote", "-downvote", "~downvote",
+           "voteddown", "-voteddown", "~voteddown",
+           "downvoted", "-downvoted", "~downvoted",
+           "votedown", "-votedown", "~votedown"
         add_to_query(type, :downvote, privileged_user_id_or_invalid(g2))
 
-      when "voted", "-voted", "~voted" then add_to_query(type, :voted, privileged_user_id_or_invalid(g2))
+      when "voted", "-voted", "~voted",
+            "vote", "-vote", "~vote"
+        add_to_query(type, :voted, privileged_user_id_or_invalid(g2))
 
       when *COUNT_METATAGS then q[metatag_name.downcase.to_sym] = ParseValue.range(g2)
 
-      when *BOOLEAN_METATAGS then q[metatag_name.downcase.to_sym] = parse_boolean(g2)
+      when *BOOLEAN_METATAGS
+        canonical = BOOLEAN_METATAG_ALIASES.fetch(metatag_name.downcase, metatag_name.downcase)
+        q[canonical.to_sym] = parse_boolean(g2)
 
       else
         add_tag(token)
@@ -1473,39 +1595,56 @@ class TagQuery
   # Same as `TagQuery::REGEX_VALID_TAG_CHECK`, but disallows `*`
   REGEX_VALID_TAG_CHECK_2 = /[\*\,\#\$\%\\]/
 
+  # Checks if a certain tag should be transformed into a metatag, and adds it accordingly if so.
+  def intercept_metatag_alias(tag, type)
+    filetype = FileMethods::FILE_TYPE_ALIASES[tag]
+    filetype ||= tag if FileMethods::FILE_TYPE.value?(tag)
+
+    if filetype
+      add_to_query(type, :filetype, filetype)
+      return true
+    end
+    nil
+  end
+
   # Adds the tag to the query object based on its prefix and if it contains a wildcard.
   # ### Notes:
   # * Exits if it's not a facially valid tag. Stops prior behavior of searching for tags comprised
   # entirely of invalid characters (which would always be false but, if preceded by `~` or `-`,
   # wouldn't end the search).
   def add_tag(tag)
-    if tag.start_with?("-")
-      tag = tag[1..]
-      if SETTINGS[:CHECK_TAG_VALIDITY] && REGEX_VALID_TAG_CHECK.match?(tag)
+    tag_name, tag_type = get_tag_name_with_search_type(tag)
+
+    return if intercept_metatag_alias(tag_name, tag_type)
+
+    case tag_type
+    when :must_not
+      if SETTINGS[:CHECK_TAG_VALIDITY] && REGEX_VALID_TAG_CHECK.match?(tag_name)
         return if !SETTINGS[:ERROR_ON_INVALID_TAG] || SETTINGS[:CATCH_INVALID_TAG]
-        raise InvalidTagError.new(tag: tag, prefix: "-", query_obj: self)
+        raise InvalidTagError.new(tag: tag_name, prefix: "-", query_obj: self)
       end
-      if tag.include?("*")
-        q[:tags][:must_not] += pull_wildcard_tags(tag.downcase)
+      if tag_name.include?("*")
+        q[:tags][:must_not] += pull_wildcard_tags(tag_name)
+        check_opensearch_clause_count
       else
-        q[:tags][:must_not] << tag.downcase
+        q[:tags][:must_not] << tag_name
       end
-    elsif tag.start_with?("~")
-      tag = tag[1..]
-      if SETTINGS[:CHECK_TAG_VALIDITY] && REGEX_VALID_TAG_CHECK_2.match?(tag)
+    when :should
+      if SETTINGS[:CHECK_TAG_VALIDITY] && REGEX_VALID_TAG_CHECK_2.match?(tag_name)
         return if !SETTINGS[:ERROR_ON_INVALID_TAG] || SETTINGS[:CATCH_INVALID_TAG]
-        raise InvalidTagError.new(tag: tag, prefix: "~", has_wildcard: tag.include?("*"), query_obj: self)
+        raise InvalidTagError.new(tag: tag_name, prefix: "~", has_wildcard: tag_name.include?("*"), query_obj: self)
       end
-      q[:tags][:should] << tag.downcase
-    else
-      if SETTINGS[:CHECK_TAG_VALIDITY] && REGEX_VALID_TAG_CHECK.match?(tag)
+      q[:tags][:should] << tag_name
+    when :must
+      if SETTINGS[:CHECK_TAG_VALIDITY] && REGEX_VALID_TAG_CHECK.match?(tag_name)
         return if !SETTINGS[:ERROR_ON_INVALID_TAG] || SETTINGS[:CATCH_INVALID_TAG]
-        raise InvalidTagError.new(tag: tag, query_obj: self)
+        raise InvalidTagError.new(tag: tag_name, query_obj: self)
       end
-      if tag.include?("*")
-        q[:tags][:should] += pull_wildcard_tags(tag)
+      if tag_name.include?("*")
+        q[:tags][:should] += pull_wildcard_tags(tag_name)
+        check_opensearch_clause_count
       else
-        q[:tags][:must] << tag.downcase
+        q[:tags][:must] << tag_name
       end
     end
   end
@@ -1549,6 +1688,16 @@ class TagQuery
     end
   end
 
+  def check_opensearch_clause_count
+    total = q[:tags][:must].size + q[:tags][:must_not].size + q[:tags][:should].size
+    if total > OPENSEARCH_MAX_CLAUSE_COUNT
+      raise CountExceededError.new(
+        "Tag search query is too large (#{total} tags after wildcard expansion). Reduce the number of wildcard tags or use more specific patterns.",
+        query_obj: self,
+      )
+    end
+  end
+
   def pull_wildcard_tags(tag)
     Tag.name_matches(tag)
        .limit(Danbooru.config.tag_query_limit) # .limit(tag_query_limit)
@@ -1576,13 +1725,17 @@ class TagQuery
   end
 
   def user_id_or_invalid(val)
+    if val.is_a?(String) && val.casecmp?("me")
+      return CurrentUser.user.is_logged_in? ? CurrentUser.id : -1
+    end
     User.name_or_id_to_id(val).presence || -1
   end
 
   def privileged_user_id_or_invalid(val)
-    if CurrentUser.is_moderator?
+    if CurrentUser.user.is_moderator?
+      return CurrentUser.id if val.is_a?(String) && val.casecmp?("me")
       User.name_or_id_to_id(val).presence
-    elsif CurrentUser.is_member?
+    elsif CurrentUser.user.is_logged_in?
       CurrentUser.id.presence
     end || -1
   end

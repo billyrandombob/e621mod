@@ -4,6 +4,8 @@ module Maintenance
   module User
     class ApiKeyExpirationMailer < ApplicationMailer
       def expiration_notice(user, api_key)
+        return unless deliverable_email?(user)
+
         @user = user
         @api_key = api_key
         mail(

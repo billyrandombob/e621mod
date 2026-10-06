@@ -7,11 +7,20 @@
         <li><strong>Category actual</strong>: <%= TagCategory::REVERSE_MAPPING[@correction.category] %></li>
         <li><strong>Category memcache</strong>: <%= TagCategory::REVERSE_MAPPING[@correction.category_cache] || "none" %></li>
         <li><strong>Post count db cache</strong>: <%= @correction.post_count %></li>
-        <li><strong>Post count actual:</strong> <%= @correction.real_post_count %></li>
+        <li><strong>OpenSearch post count</strong>: <%= @correction.post_count_from_opensearch %></li>
       </ul>
     </div>
 
     <% if CurrentUser.user.is_bd_staff? %>
+      <% if @true_post_ids.present? %>
+        <div style="margin-bottom: 1em;">
+          <b>Warning:</b> Stuck posts may be present.<br />
+          <pre>
+            <%= @true_post_ids %>
+          </pre>
+        </div>
+      <% end %>
+
       <div style="margin-bottom: 1em;">
         <ul>
           <li><strong>Real count:</strong> <%= link_to(@true_count, posts_path(tags: "#{@tag.name} status:any")) %>

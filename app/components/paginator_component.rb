@@ -48,7 +48,7 @@ class PaginatorComponent < ViewComponent::Base
 
   def prev_path
     return nav_params_for(current_page - 1) if @mode == :numbered
-    nav_params_for("a#{records.first&.id}")
+    nav_params_for("a#{records.first&.id || 0}")
   end
 
   def has_next?
@@ -58,7 +58,7 @@ class PaginatorComponent < ViewComponent::Base
 
   def next_path
     return nav_params_for(current_page + 1) if @mode == :numbered
-    nav_params_for("b#{records.last&.id}")
+    nav_params_for("b#{records.last&.id || 0}")
   end
 
   ##############################
@@ -88,7 +88,6 @@ class PaginatorComponent < ViewComponent::Base
   end
 
   def nav_params_for(page)
-    query_params = params.except(:id).merge(page: page).permit!
-    url_for(query_params)
+    url_for(params: request.query_parameters.merge("page" => page))
   end
 end

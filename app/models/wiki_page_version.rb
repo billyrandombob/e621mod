@@ -2,6 +2,7 @@
 
 class WikiPageVersion < ApplicationRecord
   array_attribute :other_names
+  array_attribute :featured_posts, parse: /\d+/, cast: :to_i
   belongs_to :wiki_page
   belongs_to_updater
   user_status_counter :wiki_edit_count, foreign_key: :updater_id
@@ -18,7 +19,8 @@ class WikiPageVersion < ApplicationRecord
       q = q.where_user(:updater_id, :updater, params)
 
       if params[:wiki_page_id].present?
-        q = q.where("wiki_page_id = ?", params[:wiki_page_id].to_i)
+        q = q.where("wiki_page_id = ?", ParseValue.safe_id(params[:wiki_page_id]))
+        # If the wiki_page_id is out of range, the id will be -1, so there will be no results
       end
 
       q = q.attribute_matches(:title, params[:title])

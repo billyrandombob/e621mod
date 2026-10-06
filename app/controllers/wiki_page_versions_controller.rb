@@ -19,8 +19,14 @@ class WikiPageVersionsController < ApplicationController
       return
     end
 
-    @thispage = WikiPageVersion.find(params[:thispage])
-    @otherpage = WikiPageVersion.find(params[:otherpage])
+    @thispage = WikiPageVersion.find(ParseValue.safe_id(params[:thispage].to_s))
+    @otherpage = WikiPageVersion.find(ParseValue.safe_id(params[:otherpage].to_s))
+
+    # Determine the changes between featured post ID arrays in the two versions
+    thispage_featured_posts = @thispage.featured_posts || []
+    otherpage_featured_posts = @otherpage.featured_posts || []
+    @featured_posts_added = otherpage_featured_posts - thispage_featured_posts
+    @featured_posts_removed = thispage_featured_posts - otherpage_featured_posts
   end
 
   private

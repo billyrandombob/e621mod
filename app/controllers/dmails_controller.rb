@@ -17,18 +17,19 @@ class DmailsController < ApplicationController
 
   def show
     @dmail = Dmail.find(params[:id])
-    check_privilege(@dmail)
+    check_privilege(@dmail, params[:key])
     respond_with(@dmail) do |format|
       format.html do
-        @dmail.mark_as_read! unless @dmail.is_read
+        @dmail.mark_as_read! if !@dmail.is_read && @dmail.owner_id == CurrentUser.user.id
       end
     end
   end
 
+  # TODO: Test endpoint with key
   def new
     if params[:respond_to_id]
       parent = Dmail.find(params[:respond_to_id])
-      check_privilege(parent)
+      check_privilege(parent, params[:key])
       @dmail = parent.build_response(forward: params[:forward])
     else
       @dmail = Dmail.new(create_params)
@@ -45,6 +46,7 @@ class DmailsController < ApplicationController
   def destroy
     @dmail = Dmail.find(params[:id])
     check_privilege(@dmail)
+    check_is_owner(@dmail)
     @dmail.mark_as_read!
     @dmail.update_column(:is_deleted, true)
     respond_to do |format|
@@ -56,12 +58,18 @@ class DmailsController < ApplicationController
   def mark_as_read
     @dmail = Dmail.find(params[:id])
     check_privilege(@dmail)
+    check_is_owner(@dmail)
     @dmail.mark_as_read!
+    respond_to do |format|
+      format.html { redirect_to(dmails_path, notice: "Message marked as read") }
+      format.json
+    end
   end
 
   def mark_as_unread
     @dmail = Dmail.find(params[:id])
     check_privilege(@dmail)
+    check_is_owner(@dmail)
     @dmail.mark_as_unread!
     respond_to do |format|
       format.html { redirect_to(dmails_path, notice: "Message marked as unread") }
@@ -83,8 +91,12 @@ class DmailsController < ApplicationController
 
   private
 
-  def check_privilege(dmail)
-    raise User::PrivilegeError unless dmail.visible_to?(CurrentUser.user)
+  def check_privilege(dmail, key = nil)
+    raise User::PrivilegeError unless dmail.visible_to?(CurrentUser.user, key)
+  end
+
+  def check_is_owner(dmail)
+    raise User::PrivilegeError unless dmail.owner_id == CurrentUser.user.id
   end
 
   def create_params

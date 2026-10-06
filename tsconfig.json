@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": false,
+    "strict": false,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./app/javascript/src/js/*"]
+    }
+  },
+  "include": [
+    "app/javascript/**/*"
+  ]
+}

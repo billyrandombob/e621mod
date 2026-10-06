@@ -11,6 +11,11 @@ module Sources
         Alternates::Inkbunny,
         Alternates::Youtube,
         Alternates::Derpibooru,
+        Alternates::Facebook,
+        Alternates::Webtoons,
+        Alternates::Tapas,
+        Alternates::Imgur,
+        Alternates::Tumblr,
       ]
     end
 

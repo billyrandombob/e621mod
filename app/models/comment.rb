@@ -14,14 +14,18 @@ class Comment < ApplicationRecord
   validates :body, length: { minimum: 1, maximum: Danbooru.config.comment_max_size }
 
   after_create :update_last_commented_at_on_create
+  after_destroy :update_last_commented_at_on_destroy
+  after_save :update_last_commented_at_on_destroy, if: ->(rec) { rec.is_hidden? && rec.saved_change_to_is_hidden? }
+
+  after_create_commit :enqueue_automod_create_check
+  after_update_commit :enqueue_automod_update_check, if: :saved_change_to_body?
+
   after_update(if: ->(rec) { !rec.saved_change_to_is_hidden? && CurrentUser.id != rec.creator_id }) do |rec|
     ModAction.log(:comment_update, { comment_id: rec.id, user_id: rec.creator_id })
   end
-  after_destroy :update_last_commented_at_on_destroy
   after_destroy do |rec|
     ModAction.log(:comment_delete, { comment_id: rec.id, user_id: rec.creator_id })
   end
-  after_save :update_last_commented_at_on_destroy, if: ->(rec) { rec.is_hidden? && rec.saved_change_to_is_hidden? }
   after_save(if: ->(rec) { rec.saved_change_to_is_hidden? && CurrentUser.id != rec.creator_id }) do |rec|
     action = rec.is_hidden? ? :comment_hide : :comment_unhide
     ModAction.log(action, { comment_id: rec.id, user_id: rec.creator_id })
@@ -49,7 +53,7 @@ class Comment < ApplicationRecord
       arguments = []
 
       # 1. Visibility: not hidden or created by the user themselves
-      if user.is_anonymous? || !(user.show_hidden_comments? || bypass_user_settings)
+      if user.is_logged_out? || !(user.show_hidden_comments? || bypass_user_settings)
         conditions << "comments.is_hidden = false"
       elsif !user.is_staff?
         conditions << "(comments.is_hidden = false OR comments.creator_id = ?)"
@@ -62,7 +66,7 @@ class Comment < ApplicationRecord
       unless user.is_staff?
         disabled_post_ids = SearchMethods.comment_disabled_post_ids
         unless disabled_post_ids.empty?
-          conditions << "comments.post_id NOT IN (?)"
+          conditions << "(comments.post_id NOT IN (?) OR comments.is_sticky = true)"
           arguments << disabled_post_ids
         end
       end
@@ -133,7 +137,7 @@ class Comment < ApplicationRecord
       end
 
       if params[:post_id].present?
-        q = q.where("post_id in (?)", params[:post_id].split(",").map(&:to_i))
+        q = q.where("post_id in (?)", params[:post_id].split(",").map { |id| ParseValue.safe_id(id) })
       end
 
       if params[:post_tags_match].present?
@@ -200,7 +204,7 @@ class Comment < ApplicationRecord
     # Authorization check: user has permission to see this comment
     def is_accessible?(user = CurrentUser.user, bypass_user_settings: false)
       # 1. Visibility: not hidden or created by the user themselves
-      if user.is_anonymous? || !(user.show_hidden_comments? || bypass_user_settings)
+      if user.is_logged_out? || !(user.show_hidden_comments? || bypass_user_settings)
         return false if is_hidden?
       elsif !user.is_staff?
         return false if is_hidden? && creator_id != user.id
@@ -223,12 +227,14 @@ class Comment < ApplicationRecord
     end
 
     def can_reply?(user = CurrentUser.user)
+      return false unless user.is_member?
       return false if is_sticky?
       return false if (post&.is_comment_locked? || post&.is_comment_disabled?) && !user.is_moderator?
       true
     end
 
     def can_edit?(user = CurrentUser.user)
+      return false unless user.is_member?
       return true if user.is_admin?
       return false if (post&.is_comment_locked? || post&.is_comment_disabled?) && !user.is_moderator?
       return false if was_warned?
@@ -236,14 +242,45 @@ class Comment < ApplicationRecord
     end
 
     def can_hide?(user = CurrentUser.user)
+      return false unless user.is_member?
       return true if user.is_moderator?
       return false if was_warned? || post&.is_comment_disabled?
       user.id == creator_id
     end
   end
 
+  module VoteMethods
+    extend ActiveSupport::Concern
+
+    module ClassMethods
+      # Bulk-populate the user's vote score for a collection of comments so that
+      # subsequent `vote_by(user_id)` calls return without hitting the DB.
+      def preload_vote_by!(comments, user_id)
+        comments = Array.wrap(comments).compact
+        return if comments.empty? || user_id.blank?
+
+        scores = CommentVote.where(user_id: user_id, comment_id: comments.map(&:id)).pluck(:comment_id, :score).to_h
+        comments.each { |comment| comment.preset_vote_by(user_id, scores.fetch(comment.id, 0)) }
+      end
+    end
+
+    def preset_vote_by(user_id, score)
+      @vote_by_cache ||= {}
+      @vote_by_cache[user_id] = score
+    end
+
+    # Returns -1, 0, or 1. A missing or locked CommentVote both yield 0.
+    def vote_by(user_id = CurrentUser.id)
+      return 0 if user_id.blank?
+      cached = @vote_by_cache&.[](user_id)
+      return cached unless cached.nil?
+      CommentVote.where(user_id: user_id, comment_id: id).pick(:score) || 0
+    end
+  end
+
   extend SearchMethods
   include AccessMethods
+  include VoteMethods
 
   def validate_post_exists
     errors.add(:post, "must exist") unless Post.exists?(post_id)
@@ -307,5 +344,15 @@ class Comment < ApplicationRecord
 
   def unhide!
     update(is_hidden: false)
+  end
+
+  private
+
+  def enqueue_automod_create_check
+    AutomodCheckJob.perform_async(id)
+  end
+
+  def enqueue_automod_update_check
+    AutomodCheckJob.perform_async(id)
   end
 end

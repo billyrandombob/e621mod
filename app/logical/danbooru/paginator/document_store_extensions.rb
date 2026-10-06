@@ -26,13 +26,13 @@ module Danbooru
       def paginate_sequential_before
         search.definition.update(size: records_per_page + 1, track_total_hits: records_per_page + 1)
         search.definition[:body].update(sort: [{ id: :desc }])
-        query_definition[:bool][:must].push({ range: { id: { lt: current_page } } })
+        query_definition[:bool]&.dig(:must)&.push({ range: { id: { lt: current_page } } })
       end
 
       def paginate_sequential_after
         search.definition.update(size: records_per_page + 1, track_total_hits: records_per_page + 1)
         search.definition[:body].update(sort: [{ id: :asc }])
-        query_definition[:bool][:must].push({ range: { id: { gt: current_page } } })
+        query_definition[:bool]&.dig(:must)&.push({ range: { id: { gt: current_page } } })
       end
 
       def query_definition
@@ -58,10 +58,17 @@ module Danbooru
         real_count > 0
       end
 
-      def count_only
+      def count_only(max_count: nil)
         search.definition[:body]&.delete(:sort)
-        search.definition.update(from: 0, size: 0, sort: "_doc", _source: false, track_total_hits: true)
+        search.definition.update(from: 0, size: 0, sort: "_doc", _source: false, track_total_hits: max_count || true)
         real_count
+      end
+
+      # Whether the last count was capped by track_total_hits (OpenSearch reports the
+      # total as a lower bound). Reads the same memoized response as real_count.
+      def count_capped?
+        total = response["hits"]["total"]
+        total.respond_to?(:keys) && total["relation"] == "gte"
       end
     end
   end

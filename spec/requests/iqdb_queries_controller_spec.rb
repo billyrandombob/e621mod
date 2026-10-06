@@ -1,0 +1,393 @@
+# frozen_string_literal: true
+
+require "rails_helper"
+
+RSpec.describe IqdbQueriesController do
+  include_context "as admin"
+
+  before do
+    allow(IqdbProxy).to receive(:enabled?).and_return(true)
+    allow(RateLimiter).to receive_messages(throttle!: false, new: instance_double(RateLimiter, throttled?: false, hit!: 1))
+  end
+
+  # ---------------------------------------------------------------------------
+  # Feature gate
+  # ---------------------------------------------------------------------------
+
+  describe "GET /iqdb_queries — feature disabled" do
+    before { allow(IqdbProxy).to receive(:enabled?).and_return(false) }
+
+    it "returns 400" do
+      get iqdb_queries_path
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # No search params
+  # ---------------------------------------------------------------------------
+
+  describe "GET /iqdb_queries — no search params" do
+    it "returns 200" do
+      get iqdb_queries_path
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns an empty array as JSON" do
+      get iqdb_queries_path(format: :json)
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to eq([])
+    end
+
+    it "does not call RateLimiter when no search params are present" do
+      get iqdb_queries_path
+      expect(RateLimiter).not_to have_received(:new)
+      expect(RateLimiter).not_to have_received(:throttle!)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # post_id param
+  # ---------------------------------------------------------------------------
+
+  describe "GET /iqdb_queries — post_id param" do
+    let(:post) { create(:post) }
+
+    before { allow(IqdbProxy).to receive(:query_post).and_return([]) }
+
+    it "returns 200 for a valid numeric post_id" do
+      get iqdb_queries_path, params: { post_id: post.id }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "delegates to IqdbProxy.query_post with the raw post_id param" do
+      get iqdb_queries_path, params: { post_id: post.id }
+      expect(IqdbProxy).to have_received(:query_post).with(post.id.to_s, any_args)
+    end
+
+    it "returns 400 for a non-numeric post_id" do
+      get iqdb_queries_path, params: { post_id: "abc" }
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it "returns 200 using the search[] namespace" do
+      get iqdb_queries_path, params: { search: { post_id: post.id } }
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # hash param
+  # ---------------------------------------------------------------------------
+
+  describe "GET /iqdb_queries — hash param" do
+    before { allow(IqdbProxy).to receive(:query_hash).and_return([]) }
+
+    it "returns 200 for a valid hex hash" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns an empty array as JSON" do
+      get iqdb_queries_path(format: :json), params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to eq([])
+    end
+
+    it "returns 400 for a non-hex hash" do
+      get iqdb_queries_path, params: { hash: "not-valid!" }
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it "returns 200 using uppercase hex characters" do
+      get iqdb_queries_path, params: { hash: "DEADBEEF" }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "delegates to IqdbProxy.query_hash" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(IqdbProxy).to have_received(:query_hash)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # url param
+  # ---------------------------------------------------------------------------
+
+  describe "GET /iqdb_queries — url param" do
+    before do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_return([])
+    end
+
+    it "returns 200 for a whitelisted URL" do
+      get iqdb_queries_path, params: { url: "https://example.com/image.jpg" }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "delegates to IqdbProxy.query_url" do
+      get iqdb_queries_path, params: { url: "https://example.com/image.jpg" }
+      expect(IqdbProxy).to have_received(:query_url)
+    end
+
+    it "returns 400 for a non-whitelisted URL" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([false, "not in whitelist"])
+      get iqdb_queries_path, params: { url: "https://example.com/image.jpg" }
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it "returns 400 when url param is not a string (nested hash)" do
+      # Passing url as a nested hash makes it non-String, triggering the type guard
+      get iqdb_queries_path, params: { url: { nested: "value" } }
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # file param (POST)
+  # ---------------------------------------------------------------------------
+
+  describe "POST /iqdb_queries — file param" do
+    before { allow(IqdbProxy).to receive(:query_file).and_return([]) }
+
+    it "returns 200 for a valid uploaded file" do
+      file = fixture_file_upload("spec/fixtures/files/sample.jpg", "image/jpeg")
+      post iqdb_queries_path, params: { file: file }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "delegates to IqdbProxy.query_file" do
+      file = fixture_file_upload("spec/fixtures/files/sample.jpg", "image/jpeg")
+      post iqdb_queries_path, params: { file: file }
+      expect(IqdbProxy).to have_received(:query_file)
+    end
+
+    it "returns 400 when file param is a plain string" do
+      post iqdb_queries_path, params: { file: "not-a-file" }
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # POST /iqdb_queries (general)
+  # ---------------------------------------------------------------------------
+
+  describe "POST /iqdb_queries" do
+    before { allow(IqdbProxy).to receive(:query_hash).and_return([]) }
+
+    it "returns 200" do
+      post iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Error handling
+  # ---------------------------------------------------------------------------
+
+  describe "error handling" do
+    it "returns 422 on Downloads::File::Error with the message in the page" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_raise(Downloads::File::Error, "Couldn't download the file")
+      get iqdb_queries_path, params: { url: "https://example.com/image.jpg" }
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.body).to include("Couldn&#39;t download the file")
+    end
+
+    it "returns 503 when the IQDB circuit is open" do
+      allow(IqdbProxy).to receive(:query_hash).and_raise(IqdbProxy::CircuitOpenError, "IQDB temporarily unavailable")
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:service_unavailable)
+    end
+
+    it "returns 503 on IqdbProxy::Error" do
+      allow(IqdbProxy).to receive(:query_hash).and_raise(IqdbProxy::Error, "service unavailable")
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:service_unavailable)
+    end
+
+    it "returns 429 when the IQDB semaphore is exhausted" do
+      allow(IqdbProxy).to receive(:query_hash).and_raise(IqdbProxy::BusyError, "IQDB is temporarily busy")
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:too_many_requests)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Friendly error rendering (bug-report regressions)
+  # ---------------------------------------------------------------------------
+
+  describe "friendly error rendering" do
+    it "re-renders the search form with an inline error for an invalid post ID" do
+      get iqdb_queries_path, params: { post_id: "-1" }
+      expect(response).to have_http_status(:bad_request)
+      expect(response.body).to include("Please enter a valid post ID.")
+      expect(response.body).to include("Similar Images Search")
+      expect(response.body).to include("error-messages")
+      expect(response.body).not_to include("No similar posts found.")
+    end
+
+    it "renders the inline error for an invalid post ID in the search[] namespace" do
+      get iqdb_queries_path, params: { search: { post_id: "-1" } }
+      expect(response).to have_http_status(:bad_request)
+      expect(response.body).to include("Please enter a valid post ID.")
+    end
+
+    it "returns the standard JSON error shape for an invalid post ID" do
+      get iqdb_queries_path(format: :json), params: { post_id: "-1" }
+      expect(response).to have_http_status(:bad_request)
+      expect(response.parsed_body).to eq({ "success" => false, "message" => "Please enter a valid post ID.", "code" => nil })
+    end
+
+    it "rejects a URL with a bogus scheme without querying or logging an exception" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url)
+      expect do
+        get iqdb_queries_path, params: { url: "a://example.com/image.jpg" }
+      end.not_to change(ExceptionLog, :count)
+      expect(response).to have_http_status(:bad_request)
+      expect(response.body).to include("The URL must begin with http:// or https://.")
+      expect(IqdbProxy).not_to have_received(:query_url)
+    end
+
+    it "defaults scheme-less URLs to https" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_return([])
+      get iqdb_queries_path, params: { url: "example.com/image.jpg" }
+      expect(response).to have_http_status(:ok)
+      expect(IqdbProxy).to have_received(:query_url).with("https://example.com/image.jpg", any_args)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Throttling — disabled
+  # ---------------------------------------------------------------------------
+
+  describe "throttling — disabled" do
+    before do
+      allow(Danbooru.config.custom_configuration).to receive(:disable_throttles?).and_return(true)
+      allow(IqdbProxy).to receive(:query_hash).and_return([])
+    end
+
+    it "allows requests without hitting the RateLimiter" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:ok)
+      expect(RateLimiter).not_to have_received(:new)
+      expect(RateLimiter).not_to have_received(:throttle!)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Throttling — authenticated user
+  # ---------------------------------------------------------------------------
+
+  describe "throttling - authenticated user" do
+    let(:user) { create(:user) }
+
+    before do
+      sign_in_as user
+      allow(IqdbProxy).to receive(:query_hash).and_return([])
+    end
+
+    it "returns 429 when the per-IP rate limit is exceeded" do
+      allow(RateLimiter).to receive(:new).with("eris:light:127.0.0.1", any_args).and_return(instance_double(RateLimiter, throttled?: true))
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "returns 429 when the per-user rate limit is exceeded" do
+      allow(RateLimiter).to receive(:new).with("eris:light:user:#{user.id}", any_args).and_return(instance_double(RateLimiter, throttled?: true))
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "applies the light limits to hash queries, keyed by IP address and user ID" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(RateLimiter).to have_received(:new).with("eris:light:127.0.0.1", limit: 10, period: 10.seconds)
+      expect(RateLimiter).to have_received(:new).with("eris:light:user:#{user.id}", limit: 10, period: 10.seconds)
+    end
+
+    it "does not consume the heavy budget for hash queries" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(RateLimiter).not_to have_received(:new).with(/heavy/, any_args)
+    end
+
+    it "applies the heavy limits to url queries" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_return([])
+      get iqdb_queries_path, params: { url: "https://example.com/image.jpg" }
+      expect(RateLimiter).to have_received(:new).with("eris:heavy:127.0.0.1", limit: 6, period: 10.seconds)
+      expect(RateLimiter).to have_received(:new).with("eris:heavy:user:#{user.id}", limit: 6, period: 10.seconds)
+      expect(RateLimiter).not_to have_received(:new).with(/light/, any_args)
+    end
+
+    it "does not apply the light limits when both hash and url params are present" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_return([])
+      get iqdb_queries_path, params: { hash: "deadbeef", url: "https://example.com/image.jpg" }
+      expect(RateLimiter).to have_received(:new).with("eris:heavy:127.0.0.1", limit: 6, period: 10.seconds)
+      expect(RateLimiter).to have_received(:new).with("eris:heavy:user:#{user.id}", limit: 6, period: 10.seconds)
+      expect(RateLimiter).not_to have_received(:new).with(/light/, any_args)
+    end
+
+    it "is not blocked by the anonymous lockdown" do
+      allow(IqdbProxy).to receive(:anon_lockdown?).and_return(true)
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Throttling — anonymous user
+  # ---------------------------------------------------------------------------
+
+  describe "throttling — anonymous user" do
+    before do
+      allow(IqdbProxy).to receive_messages(enabled?: true, query_hash: [], anon_lockdown?: false)
+      allow(RateLimiter).to receive(:throttle!).and_return(false)
+    end
+
+    it "allows requests within the limit" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "applies the light limits to hash queries with the anon-specific key" do
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(RateLimiter).to have_received(:throttle!).with("eris:light:anon:127.0.0.1", limit: 10, period: 10.seconds)
+    end
+
+    it "applies the heavy limits to url queries with the anon-specific key" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_return([])
+      get iqdb_queries_path, params: { url: "https://example.com/image.jpg" }
+      expect(RateLimiter).to have_received(:throttle!).with("eris:heavy:anon:127.0.0.1", limit: 1, period: 60.seconds)
+    end
+
+    it "does not apply the light limits when both hash and url params are present" do
+      allow(UploadWhitelist).to receive(:is_whitelisted?).and_return([true, "ok"])
+      allow(IqdbProxy).to receive(:query_url).and_return([])
+      get iqdb_queries_path, params: { hash: "deadbeef", url: "https://example.com/image.jpg" }
+      expect(RateLimiter).to have_received(:throttle!).with("eris:heavy:anon:127.0.0.1", limit: 1, period: 60.seconds)
+      expect(RateLimiter).not_to have_received(:throttle!).with("eris:light:anon:127.0.0.1", any_args)
+    end
+
+    it "returns 429 when the per-IP rate limit is exceeded" do
+      allow(RateLimiter).to receive(:throttle!).with("eris:light:anon:127.0.0.1", any_args).and_return(true)
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "returns 429 when the anonymous lockdown is active" do
+      allow(IqdbProxy).to receive(:anon_lockdown?).and_return(true)
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it "does not call RateLimiter when the lockdown is active" do
+      allow(IqdbProxy).to receive(:anon_lockdown?).and_return(true)
+      get iqdb_queries_path, params: { hash: "deadbeef" }
+      expect(RateLimiter).not_to have_received(:throttle!)
+    end
+  end
+end
